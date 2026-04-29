@@ -3,7 +3,7 @@ import csv
 import time
 import os
 
-PORT = "COM5"   # 改成你的端口
+PORT = "COM5"  
 BAUD = 115200
 CSV_FILE = "mq135_data.csv"
 
@@ -31,15 +31,13 @@ with open(CSV_FILE, "a", newline="", encoding="utf-8") as f:
 
             print(line)
 
-            # 只保存 CSV 开头的数据行
             if not line.startswith("CSV,"):
                 continue
 
             parts = line.split(",")
 
-            # CSV,time_ms,raw,voltage,change_percent,status = 6 个
             if len(parts) == 6:
-                writer.writerow(parts[1:])  # 去掉 CSV 标记
+                writer.writerow(parts[1:]) 
                 f.flush()
                 print("Saved:", parts[1:])
 
