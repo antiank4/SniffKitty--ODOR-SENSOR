@@ -1,5 +1,11 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <Wire.h>
+
+#define sensor_t adafruit_sensor_t
+#include <Adafruit_AHTX0.h>
+#undef sensor_t
+
 #include "esp_camera.h"
 #include "esp_http_server.h"
 
@@ -7,11 +13,40 @@ const char* ssid = "eduroam";
 const char* password = "***REMOVED***";
 
 const int MQ135_PIN = 1;
+const int PIR_PIN = 2;
 
-const int SAMPLE_COUNT = 20;
-const int DELAY_BETWEEN_SAMPLES = 50;
+const int AHT_SDA = 14;
+const int AHT_SCL = 21;
+
+const int SAMPLE_COUNT = 5;
+const int DELAY_BETWEEN_SAMPLES = 20;
 
 int baseline = 0;
+
+bool recording = false;
+unsigned long lastTriggerTime = 0;
+unsigned long recordingStartTime = 0;
+
+const unsigned long PIR_COOLDOWN = 0;
+const unsigned long PIR_IGNORE_AFTER_TRIGGER = 5000;
+
+volatile bool pirInterruptTriggered = false;
+
+Adafruit_AHTX0 aht;
+bool ahtReady = false;
+float baseTemp = 0;
+float baseHum = 0;
+
+float currentTempC = 0;
+float currentHum = 0;
+float currentDeltaTemp = 0;
+float currentDeltaHum = 0;
+
+int currentMQ135Raw = 0;
+float currentVoltage = 0;
+float currentChangePercent = 0;
+String currentStatus = "Waiting";
+bool currentPirState = false;
 
 #define PWDN_GPIO_NUM     -1
 #define RESET_GPIO_NUM    -1
@@ -32,6 +67,10 @@ int baseline = 0;
 #define HREF_GPIO_NUM     7
 #define PCLK_GPIO_NUM     13
 
+void IRAM_ATTR handlePirInterrupt() {
+  pirInterruptTriggered = true;
+}
+
 int readMQ135Average() {
   long sum = 0;
   for (int i = 0; i < SAMPLE_COUNT; i++) {
@@ -45,7 +84,7 @@ void calibrateBaseline() {
   Serial.println("Calibrating... keep air clean");
 
   long sum = 0;
-  int count = 50;
+  int count = 300;
 
   for (int i = 0; i < count; i++) {
     int val = readMQ135Average();
@@ -58,6 +97,18 @@ void calibrateBaseline() {
   Serial.println();
   Serial.print("Baseline = ");
   Serial.println(baseline);
+}
+
+void updateStatusFromMQ135() {
+  if (currentChangePercent < 10) {
+    currentStatus = "Normal";
+  } else if (currentChangePercent < 30) {
+    currentStatus = "Slight Change";
+  } else if (currentChangePercent < 80) {
+    currentStatus = "Medium Odor";
+  } else {
+    currentStatus = "Strong Odor!";
+  }
 }
 
 void initCamera() {
@@ -88,9 +139,7 @@ void initCamera() {
 
   config.pixel_format = PIXFORMAT_JPEG;
   config.xclk_freq_hz = 10000000;
-
-  // 你可以改这里控制真实拍摄分辨率
-  config.frame_size = FRAMESIZE_QVGA;   // 320x240
+  config.frame_size = FRAMESIZE_QVGA;
   config.jpeg_quality = 12;
   config.fb_count = 1;
   config.fb_location = CAMERA_FB_IN_DRAM;
@@ -102,13 +151,35 @@ void initCamera() {
     Serial.printf("Camera init failed: 0x%x\n", err);
     return;
   }
+
   sensor_t *s = esp_camera_sensor_get();
 
   if (s != NULL) {
     s->set_vflip(s, 1);
     s->set_hmirror(s, 1);
   }
+
   Serial.println("Camera init success!");
+}
+
+static esp_err_t data_handler(httpd_req_t *req) {
+  String json = "{";
+  json += "\"time_ms\":" + String(millis()) + ",";
+  json += "\"recording\":" + String(recording ? 1 : 0) + ",";
+  json += "\"pir\":" + String(currentPirState ? 1 : 0) + ",";
+  json += "\"mq135_raw\":" + String(currentMQ135Raw) + ",";
+  json += "\"voltage\":" + String(currentVoltage, 3) + ",";
+  json += "\"odor_change_percent\":" + String(currentChangePercent, 1) + ",";
+  json += "\"status\":\"" + currentStatus + "\",";
+  json += "\"temp_C\":" + String(currentTempC, 2) + ",";
+  json += "\"hum_percent\":" + String(currentHum, 2) + ",";
+  json += "\"delta_temp\":" + String(currentDeltaTemp, 2) + ",";
+  json += "\"delta_hum\":" + String(currentDeltaHum, 2);
+  json += "}";
+
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  return httpd_resp_send(req, json.c_str(), json.length());
 }
 
 static esp_err_t index_handler(httpd_req_t *req) {
@@ -116,38 +187,59 @@ static esp_err_t index_handler(httpd_req_t *req) {
 <!DOCTYPE html>
 <html>
 <head>
-  <title>ESP32 Camera</title>
+  <title>Cat Monitor Dashboard</title>
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+
   <style>
     body {
-      font-family: Arial;
-      text-align: center;
-      background: #111;
-      color: white;
       margin: 0;
-      padding: 20px;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #111827, #1f2937);
+      color: white;
     }
 
-    h2 {
-      margin-bottom: 10px;
+    .page {
+      padding: 24px;
     }
 
-    button {
-      font-size: 16px;
-      padding: 10px 15px;
-      margin: 5px;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
+    .title {
+      text-align: center;
+      margin-bottom: 24px;
     }
 
-    #viewer {
-      margin: 20px auto 0 auto;
-      overflow: auto;
-      width: 100%;
-      height: 75vh;
-      border: 2px solid #444;
+    .title h1 {
+      margin: 0;
+      font-size: 32px;
+    }
+
+    .title p {
+      color: #cbd5e1;
+      margin-top: 8px;
+    }
+
+    .dashboard {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 24px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 20px;
+      padding: 18px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+      backdrop-filter: blur(8px);
+    }
+
+    .camera-box {
       background: #000;
+      border-radius: 16px;
+      overflow: auto;
+      height: 75vh;
       display: flex;
       justify-content: center;
       align-items: flex-start;
@@ -156,24 +248,150 @@ static esp_err_t index_handler(httpd_req_t *req) {
     #stream {
       transform-origin: center top;
       transform: scale(1);
+      max-width: none;
+    }
+
+    .controls {
+      margin-bottom: 14px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    button {
+      background: #38bdf8;
+      color: #0f172a;
+      font-weight: bold;
+      border: none;
+      border-radius: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #7dd3fc;
+    }
+
+    .sensor-card {
+      margin-bottom: 14px;
+      background: rgba(15, 23, 42, 0.75);
+      border-radius: 16px;
+      padding: 16px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+    }
+
+    .sensor-label {
+      color: #94a3b8;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+
+    .sensor-value {
+      font-size: 26px;
+      font-weight: bold;
+    }
+
+    .small {
+      font-size: 14px;
+      color: #cbd5e1;
+      margin-top: 6px;
+    }
+
+    .status-pill {
+      display: inline-block;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-weight: bold;
+    }
+
+    .recording {
+      background: #f97316;
+      color: #431407;
+    }
+
+    .idle {
+      background: #94a3b8;
+      color: #0f172a;
+    }
+
+    @media (max-width: 900px) {
+      .dashboard {
+        grid-template-columns: 1fr;
+      }
+
+      .camera-box {
+        height: 55vh;
+      }
     }
   </style>
 </head>
 
 <body>
-  <h2>ESP32 Live Camera</h2>
+  <div class="page">
+    <div class="title">
+      <h1>Cat Health Monitor</h1>
+      <p>Live camera with MQ135, AHT10 temperature/humidity, and PIR detection</p>
+    </div>
 
-  <button onclick="zoomIn()">Zoom In</button>
-  <button onclick="zoomOut()">Zoom Out</button>
-  <button onclick="resetZoom()">Reset</button>
+    <div class="dashboard">
+      <div class="card">
+        <div class="controls">
+          <button onclick="zoomIn()">Zoom In</button>
+          <button onclick="zoomOut()">Zoom Out</button>
+          <button onclick="resetZoom()">Reset</button>
+          <span>Zoom: <b id="zoomText">100%</b></span>
+        </div>
 
-  <p>Zoom: <span id="zoomText">100%</span></p>
+        <div class="camera-box">
+          <img id="stream">
+        </div>
+      </div>
 
-  <div id="viewer">
-    <img id="stream" src="/stream">
+      <div class="card">
+        <div class="sensor-card">
+          <div class="sensor-label">System Status</div>
+          <div>
+            <span id="recordingStatus" class="status-pill idle">Idle</span>
+          </div>
+          <div class="small">PIR: <span id="pirStatus">0</span></div>
+        </div>
+
+        <div class="sensor-card">
+          <div class="sensor-label">Temperature</div>
+          <div class="sensor-value"><span id="temp">--</span> °C</div>
+          <div class="small">Delta: <span id="deltaTemp">--</span> °C</div>
+        </div>
+
+        <div class="sensor-card">
+          <div class="sensor-label">Humidity</div>
+          <div class="sensor-value"><span id="hum">--</span> %</div>
+          <div class="small">Delta: <span id="deltaHum">--</span> %</div>
+        </div>
+
+        <div class="sensor-card">
+          <div class="sensor-label">MQ135 Raw</div>
+          <div class="sensor-value"><span id="mq135">--</span></div>
+          <div class="small">Voltage: <span id="voltage">--</span> V</div>
+        </div>
+
+        <div class="sensor-card">
+          <div class="sensor-label">Odor Change</div>
+          <div class="sensor-value"><span id="odor">--</span> %</div>
+          <div class="small">Status: <b id="odorStatus">--</b></div>
+        </div>
+
+        <div class="sensor-card">
+          <div class="sensor-label">Time</div>
+          <div class="sensor-value"><span id="time">--</span> ms</div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
+    document.getElementById("stream").src = "http://" + location.hostname + ":8001/stream";
+
     let zoom = 1.0;
 
     function updateZoom() {
@@ -198,12 +416,45 @@ static esp_err_t index_handler(httpd_req_t *req) {
       zoom = 1.0;
       updateZoom();
     }
+
+    async function updateData() {
+      try {
+        const response = await fetch("/data");
+        const data = await response.json();
+
+        document.getElementById("time").innerText = data.time_ms;
+        document.getElementById("pirStatus").innerText = data.pir;
+        document.getElementById("temp").innerText = Number(data.temp_C).toFixed(2);
+        document.getElementById("hum").innerText = Number(data.hum_percent).toFixed(2);
+        document.getElementById("deltaTemp").innerText = Number(data.delta_temp).toFixed(2);
+        document.getElementById("deltaHum").innerText = Number(data.delta_hum).toFixed(2);
+        document.getElementById("mq135").innerText = data.mq135_raw;
+        document.getElementById("voltage").innerText = Number(data.voltage).toFixed(3);
+        document.getElementById("odor").innerText = Number(data.odor_change_percent).toFixed(1);
+        document.getElementById("odorStatus").innerText = data.status;
+
+        const rec = document.getElementById("recordingStatus");
+
+        if (data.recording === 1) {
+          rec.innerText = "Recording";
+          rec.className = "status-pill recording";
+        } else {
+          rec.innerText = "Idle";
+          rec.className = "status-pill idle";
+        }
+      } catch (err) {
+        console.log("Data update failed", err);
+      }
+    }
+
+    setInterval(updateData, 1000);
+    updateData();
   </script>
 </body>
 </html>
 )rawliteral";
 
-  httpd_resp_set_type(req, "text/html");
+  httpd_resp_set_type(req, "text/html; charset=UTF-8");
   return httpd_resp_send(req, html, HTTPD_RESP_USE_STRLEN);
 }
 
@@ -212,6 +463,7 @@ static esp_err_t stream_handler(httpd_req_t *req) {
   esp_err_t res = ESP_OK;
 
   res = httpd_resp_set_type(req, "multipart/x-mixed-replace;boundary=frame");
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
 
   while (true) {
     fb = esp_camera_fb_get();
@@ -253,12 +505,14 @@ static esp_err_t stream_handler(httpd_req_t *req) {
 }
 
 void startCameraServer() {
-  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-  config.server_port = 8000;
+  httpd_config_t mainConfig = HTTPD_DEFAULT_CONFIG();
+  mainConfig.server_port = 8000;
+  mainConfig.max_uri_handlers = 8;
+  mainConfig.ctrl_port = 32768;
 
-  httpd_handle_t server = NULL;
+  httpd_handle_t mainServer = NULL;
 
-  if (httpd_start(&server, &config) == ESP_OK) {
+  if (httpd_start(&mainServer, &mainConfig) == ESP_OK) {
     httpd_uri_t index_uri = {
       .uri = "/",
       .method = HTTP_GET,
@@ -266,6 +520,29 @@ void startCameraServer() {
       .user_ctx = NULL
     };
 
+    httpd_uri_t data_uri = {
+      .uri = "/data",
+      .method = HTTP_GET,
+      .handler = data_handler,
+      .user_ctx = NULL
+    };
+
+    httpd_register_uri_handler(mainServer, &index_uri);
+    httpd_register_uri_handler(mainServer, &data_uri);
+
+    Serial.println("Dashboard server started on port 8000!");
+  } else {
+    Serial.println("Dashboard server failed to start");
+  }
+
+  httpd_config_t streamConfig = HTTPD_DEFAULT_CONFIG();
+  streamConfig.server_port = 8001;
+  streamConfig.max_uri_handlers = 4;
+  streamConfig.ctrl_port = 32769;
+
+  httpd_handle_t streamServer = NULL;
+
+  if (httpd_start(&streamServer, &streamConfig) == ESP_OK) {
     httpd_uri_t stream_uri = {
       .uri = "/stream",
       .method = HTTP_GET,
@@ -273,12 +550,11 @@ void startCameraServer() {
       .user_ctx = NULL
     };
 
-    httpd_register_uri_handler(server, &index_uri);
-    httpd_register_uri_handler(server, &stream_uri);
+    httpd_register_uri_handler(streamServer, &stream_uri);
 
-    Serial.println("Camera server started!");
+    Serial.println("Camera stream server started on port 8001!");
   } else {
-    Serial.println("Camera server failed to start");
+    Serial.println("Camera stream server failed to start");
   }
 }
 
@@ -293,9 +569,12 @@ void connectWiFi() {
   }
 
   Serial.println();
-  Serial.print("WiFi connected. Open this URL: http://");
+  Serial.print("WiFi connected. Open dashboard: http://");
   Serial.print(WiFi.localIP());
   Serial.println(":8000");
+  Serial.print("Camera stream: http://");
+  Serial.print(WiFi.localIP());
+  Serial.println(":8001/stream");
 }
 
 void setup() {
@@ -303,8 +582,21 @@ void setup() {
   delay(2000);
 
   analogReadResolution(12);
+  pinMode(PIR_PIN, INPUT);
 
-  Serial.println("MQ135 sensor start...");
+  attachInterrupt(digitalPinToInterrupt(PIR_PIN), handlePirInterrupt, RISING);
+
+  Wire.begin(AHT_SDA, AHT_SCL);
+
+  Serial.println("MQ135 + PIR interrupt + AHT10 + Web Dashboard start...");
+
+  if (!aht.begin()) {
+    Serial.println("AHT10 not found!");
+    ahtReady = false;
+  } else {
+    Serial.println("AHT10 found!");
+    ahtReady = true;
+  }
 
   initCamera();
 
@@ -314,51 +606,123 @@ void setup() {
 
   calibrateBaseline();
 
-  Serial.println("time_ms,raw,voltage,change_percent,status");
+  Serial.println("Waiting for PIR trigger...");
+  Serial.println("CSV,time_ms,recording,pir,mq135_raw,voltage,odor_change_percent,status,temp_C,hum_percent,delta_temp,delta_hum");
 }
 
 void loop() {
-  int rawValue = readMQ135Average();
+  currentPirState = digitalRead(PIR_PIN);
 
-  float voltage = rawValue * (3.3 / 4095.0);
+  bool pirEvent = false;
 
-  float changePercent = ((float)(rawValue - baseline) / baseline) * 100;
+  noInterrupts();
+  if (pirInterruptTriggered) {
+    pirInterruptTriggered = false;
+    pirEvent = true;
+  }
+  interrupts();
 
-  String status;
+  if (pirEvent) {
+    if (millis() - lastTriggerTime > PIR_COOLDOWN) {
+      recording = !recording;
+      lastTriggerTime = millis();
 
-  if (changePercent < 10) {
-    status = "Normal";
-  } else if (changePercent < 30) {
-    status = "Slight Change";
-  } else if (changePercent < 80) {
-    status = "Medium Odor";
-  } else {
-    status = "Strong Odor!";
+      if (recording) {
+        recordingStartTime = millis();
+
+        Serial.println("PIR detected: START recording");
+        Serial.print("Ignoring first ");
+        Serial.print(PIR_IGNORE_AFTER_TRIGGER / 1000);
+        Serial.println(" seconds of data after PIR trigger");
+
+        if (ahtReady) {
+          sensors_event_t humidity, temp;
+          aht.getEvent(&humidity, &temp);
+
+          baseTemp = temp.temperature;
+          baseHum = humidity.relative_humidity;
+        }
+      } else {
+        Serial.println("PIR detected: STOP recording");
+      }
+    }
   }
 
-  Serial.print("Raw: ");
-  Serial.print(rawValue);
+  if (ahtReady) {
+    sensors_event_t humidity, temp;
+    aht.getEvent(&humidity, &temp);
 
-  Serial.print(" | V: ");
-  Serial.print(voltage, 3);
+    currentTempC = temp.temperature;
+    currentHum = humidity.relative_humidity;
 
-  Serial.print(" | Δ%: ");
-  Serial.print(changePercent, 1);
-  Serial.print("%");
+    if (recording) {
+      currentDeltaTemp = currentTempC - baseTemp;
+      currentDeltaHum = currentHum - baseHum;
+    } else {
+      currentDeltaTemp = 0;
+      currentDeltaHum = 0;
+    }
+  }
 
-  Serial.print(" | ");
-  Serial.println(status);
+  currentMQ135Raw = readMQ135Average();
+  currentVoltage = currentMQ135Raw * (3.3 / 4095.0);
+  currentChangePercent = ((float)(currentMQ135Raw - baseline) / baseline) * 100;
+  updateStatusFromMQ135();
+
+  Serial.print("Temp: ");
+  Serial.print(currentTempC, 2);
+  Serial.print(" C | Hum: ");
+  Serial.print(currentHum, 2);
+  Serial.print(" % | MQ135: ");
+  Serial.print(currentMQ135Raw);
+  Serial.print(" | PIR: ");
+  Serial.print(currentPirState ? 1 : 0);
+  Serial.print(" | Status: ");
+  Serial.print(currentStatus);
+
+  if (recording) {
+    Serial.print(" | Delta Temp: ");
+    Serial.print(currentDeltaTemp, 2);
+    Serial.print(" C | Delta Hum: ");
+    Serial.print(currentDeltaHum, 2);
+    Serial.print(" %");
+  }
+
+  Serial.println();
+
+  if (!recording) {
+    delay(500);
+    return;
+  }
+
+  if (millis() - recordingStartTime < PIR_IGNORE_AFTER_TRIGGER) {
+    Serial.println("Ignoring unstable data after PIR trigger...");
+    delay(1000);
+    return;
+  }
 
   Serial.print("CSV,");
   Serial.print(millis());
   Serial.print(",");
-  Serial.print(rawValue);
+  Serial.print(recording ? 1 : 0);
   Serial.print(",");
-  Serial.print(voltage, 3);
+  Serial.print(currentPirState ? 1 : 0);
   Serial.print(",");
-  Serial.print(changePercent, 1);
+  Serial.print(currentMQ135Raw);
   Serial.print(",");
-  Serial.println(status);
+  Serial.print(currentVoltage, 3);
+  Serial.print(",");
+  Serial.print(currentChangePercent, 1);
+  Serial.print(",");
+  Serial.print(currentStatus);
+  Serial.print(",");
+  Serial.print(currentTempC, 2);
+  Serial.print(",");
+  Serial.print(currentHum, 2);
+  Serial.print(",");
+  Serial.print(currentDeltaTemp, 2);
+  Serial.print(",");
+  Serial.println(currentDeltaHum, 2);
 
-  delay(1000);
+  delay(500);
 }
