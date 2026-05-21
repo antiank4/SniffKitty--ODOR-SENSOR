@@ -10,8 +10,10 @@
 extern int baseline;
 
 extern bool recording;
+extern bool postRecording;
 extern unsigned long lastTriggerTime;
 extern unsigned long recordingStartTime;
+extern unsigned long postRecordingEndTime;
 
 extern volatile bool pirInterruptTriggered;
 

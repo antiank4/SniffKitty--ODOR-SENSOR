@@ -2,12 +2,18 @@
 
 #include "sensors.h"
 #include "camera_server.h"
+#include "storage.h"
+#include "status_led.h"
 
 void setup() {
   Serial.begin(115200);
   delay(2000);
 
   initSensors();
+
+  initStatusLed();
+
+  initStorage();
 
   initCamera();
 

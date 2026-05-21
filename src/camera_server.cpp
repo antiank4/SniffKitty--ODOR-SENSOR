@@ -66,6 +66,7 @@ static esp_err_t data_handler(httpd_req_t *req) {
   String json = "{";
   json += "\"time_ms\":" + String(millis()) + ",";
   json += "\"recording\":" + String(recording ? 1 : 0) + ",";
+  json += "\"post_recording\":" + String(postRecording ? 1 : 0) + ",";
   json += "\"pir\":" + String(currentPirState ? 1 : 0) + ",";
   json += "\"mq135_raw\":" + String(currentMQ135Raw) + ",";
   json += "\"voltage\":" + String(currentVoltage, 3) + ",";
@@ -193,9 +194,18 @@ void connectWiFi() {
 
   Serial.print("Connecting WiFi");
 
-  while (WiFi.status() != WL_CONNECTED) {
+  unsigned long startTime = millis();
+  const unsigned long wifiTimeoutMs = 15000;
+
+  while (WiFi.status() != WL_CONNECTED && millis() - startTime < wifiTimeoutMs) {
     delay(500);
     Serial.print(".");
+  }
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println();
+    Serial.println("WiFi not connected. Continuing in offline SD logging mode.");
+    return;
   }
 
   Serial.println();

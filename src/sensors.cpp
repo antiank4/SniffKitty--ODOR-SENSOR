@@ -1,5 +1,7 @@
 #include "sensors.h"
 #include "config.h"
+#include "storage.h"
+#include "status_led.h"
 #include <Wire.h>
 
 int baseline = 0;
@@ -7,6 +9,8 @@ int baseline = 0;
 bool recording = false;
 unsigned long lastTriggerTime = 0;
 unsigned long recordingStartTime = 0;
+bool postRecording = false;
+unsigned long postRecordingEndTime = 0;
 
 volatile bool pirInterruptTriggered = false;
 
@@ -112,7 +116,9 @@ void updateSensors() {
   bool pirEvent = false;
 
   if (rawPirState) {
-    activeSampleCount++;
+    if (pirArmed && activeSampleCount < PIR_TRIGGER_SAMPLE_MIN) {
+      activeSampleCount++;
+    }
     clearSampleCount = 0;
   } else {
     activeSampleCount = 0;
@@ -145,6 +151,11 @@ void updateSensors() {
   interrupts();
 
   if (currentPirState) {
+    if (postRecording) {
+      postRecording = false;
+      Serial.println("PIR detected: cancel post recording");
+    }
+
     if (!recording && millis() - lastTriggerTime > PIR_COOLDOWN) {
       recording = true;
       lastTriggerTime = millis();
@@ -163,10 +174,25 @@ void updateSensors() {
         baseHum = humidity.relative_humidity;
       }
     }
-  } else if (recording) {
-    recording = false;
+  } else if (recording && !postRecording) {
     lastTriggerTime = millis();
-    Serial.println("PIR clear: STOP recording");
+
+    if (millis() - recordingStartTime >= PIR_IGNORE_AFTER_TRIGGER) {
+      postRecording = true;
+      postRecordingEndTime = millis() + PIR_RECORD_AFTER_CLOSE_MS;
+      Serial.print("PIR clear: post recording for ");
+      Serial.print(PIR_RECORD_AFTER_CLOSE_MS / 1000);
+      Serial.println(" seconds");
+    } else {
+      recording = false;
+      Serial.println("PIR clear: STOP recording short trigger ignored");
+    }
+  }
+
+  if (postRecording && millis() >= postRecordingEndTime) {
+    postRecording = false;
+    recording = false;
+    Serial.println("Post recording complete: STOP recording");
   }
 
   if (ahtReady) {
@@ -195,6 +221,7 @@ void updateSensors() {
   }
 
   updateStatusFromMQ135();
+  updateStatusLedFromOdor(currentChangePercent);
 }
 
 void printSensorStatus() {
@@ -210,6 +237,19 @@ void printSensorStatus() {
   Serial.print(currentPirRawLevel);
   Serial.print(" | PIR trigger samples: ");
   Serial.print(currentPirTriggerSamples);
+  Serial.print(" | Recording: ");
+  if (postRecording) {
+    unsigned long remainingMs = 0;
+    if (postRecordingEndTime > millis()) {
+      remainingMs = postRecordingEndTime - millis();
+    }
+
+    Serial.print("post-close ");
+    Serial.print((remainingMs + 999) / 1000);
+    Serial.print("s left");
+  } else {
+    Serial.print(recording ? "active" : "off");
+  }
   Serial.print(" | Status: ");
   Serial.print(currentStatus);
 
@@ -225,7 +265,7 @@ void printSensorStatus() {
 }
 
 void printCSVIfRecording() {
-  if (!recording || !currentPirState) {
+  if (!recording) {
     delay(500);
     return;
   }
@@ -236,28 +276,31 @@ void printCSVIfRecording() {
     return;
   }
 
-  Serial.print("CSV,");
-  Serial.print(millis());
-  Serial.print(",");
-  Serial.print(recording ? 1 : 0);
-  Serial.print(",");
-  Serial.print(currentPirState ? 1 : 0);
-  Serial.print(",");
-  Serial.print(currentMQ135Raw);
-  Serial.print(",");
-  Serial.print(currentVoltage, 3);
-  Serial.print(",");
-  Serial.print(currentChangePercent, 1);
-  Serial.print(",");
-  Serial.print(currentStatus);
-  Serial.print(",");
-  Serial.print(currentTempC, 2);
-  Serial.print(",");
-  Serial.print(currentHum, 2);
-  Serial.print(",");
-  Serial.print(currentDeltaTemp, 2);
-  Serial.print(",");
-  Serial.println(currentDeltaHum, 2);
+  String csvLine = "CSV,";
+  csvLine += String(millis());
+  csvLine += ",";
+  csvLine += String(recording ? 1 : 0);
+  csvLine += ",";
+  csvLine += String(currentPirState ? 1 : 0);
+  csvLine += ",";
+  csvLine += String(currentMQ135Raw);
+  csvLine += ",";
+  csvLine += String(currentVoltage, 3);
+  csvLine += ",";
+  csvLine += String(currentChangePercent, 1);
+  csvLine += ",";
+  csvLine += currentStatus;
+  csvLine += ",";
+  csvLine += String(currentTempC, 2);
+  csvLine += ",";
+  csvLine += String(currentHum, 2);
+  csvLine += ",";
+  csvLine += String(currentDeltaTemp, 2);
+  csvLine += ",";
+  csvLine += String(currentDeltaHum, 2);
+
+  Serial.println(csvLine);
+  appendCSVLineToSD(csvLine);
 
   delay(500);
 }
