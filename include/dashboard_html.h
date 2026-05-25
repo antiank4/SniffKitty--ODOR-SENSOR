@@ -68,7 +68,7 @@ const char DASHBOARD_HTML[] = R"rawliteral(
         <img id="dashCatPhoto" src="https://placekitten.com/200/200">
         <div>
           <h1 id="dashTitle">SniffKitty Dashboard</h1>
-          <div class="subtitle">Live camera, odor signal, entry frequency, and stool AI alert</div>
+          <div class="subtitle">Live camera, ammonia signal, entry frequency, and stool AI alert</div>
         </div>
       </div>
       <button onclick="logout()">Change Cat</button>
@@ -88,10 +88,10 @@ const char DASHBOARD_HTML[] = R"rawliteral(
 
         <div class="metric-grid">
           <div class="metric">
-            <div class="metric-title">Odor / VOC Signal</div>
-            <div class="metric-value" id="odorLevel">--</div>
-            <div class="metric-note">Baseline: MQ135 clean air level<br>Current: <span id="mqValue">--</span></div>
-            <div class="metric-note badge-warn" id="odorReview">Review Needed</div>
+            <div class="metric-title">Ammonia / MQ137 Signal</div>
+            <div class="metric-value" id="ammoniaLevel">--</div>
+            <div class="metric-note">Baseline: MQ137 clean air level<br>Current: <span id="mqValue">--</span></div>
+            <div class="metric-note badge-warn" id="ammoniaReview">Review Needed</div>
           </div>
 
           <div class="metric">
@@ -120,7 +120,7 @@ const char DASHBOARD_HTML[] = R"rawliteral(
       <div>
         <div class="card side-card alert">
           <div class="next-title">Health Summary</div>
-          <p id="summaryText">Waiting for sensor data. Recent odor, entry, and stay duration are still within normal range.</p>
+          <p id="summaryText">Waiting for sensor data. Recent ammonia, entry, and stay duration are still within normal range.</p>
         </div>
 
         <div class="card side-card">
@@ -138,7 +138,7 @@ const char DASHBOARD_HTML[] = R"rawliteral(
           <div class="next-title">Environment</div>
           <p>Temperature: <b id="tempValue">--</b> °C</p>
           <p>Humidity: <b id="humValue">--</b> %</p>
-          <p>Odor Change: <b id="odorChange">--</b> %</p>
+          <p>Ammonia Change: <b id="ammoniaChange">--</b> %</p>
           <p>Status: <b id="statusValue">--</b></p>
         </div>
 
@@ -154,7 +154,7 @@ const char DASHBOARD_HTML[] = R"rawliteral(
   document.getElementById("stream").src = "http://" + location.hostname + ":8001/stream";
 
   let catPhotoData = "";
-  let odorHistory = [];
+  let ammoniaHistory = [];
   let tempHistory = [];
   let humHistory = [];
 
@@ -240,7 +240,7 @@ const char DASHBOARD_HTML[] = R"rawliteral(
       }
     }
 
-    drawLine(odorHistory, "#b45309");
+    drawLine(ammoniaHistory, "#b45309");
     drawLine(tempHistory, "#2563eb");
     drawLine(humHistory, "#16a34a");
 
@@ -249,10 +249,10 @@ const char DASHBOARD_HTML[] = R"rawliteral(
     ctx.fillStyle = "#16a34a";
     ctx.fillText("Humidity", 130, 18);
     ctx.fillStyle = "#b45309";
-    ctx.fillText("Odor / VOC", 220, 18);
+    ctx.fillText("Ammonia", 220, 18);
   }
 
-  function odorText(percent) {
+  function ammoniaText(percent) {
     if (percent < 10) return "Normal";
     if (percent < 30) return "Slight";
     if (percent < 80) return "Elevated";
@@ -271,32 +271,32 @@ async function updateData() {
       Number(data.hum_percent).toFixed(2);
 
     document.getElementById("mqValue").innerText =
-      data.mq135_raw;
+      data.mq137_raw;
 
-    document.getElementById("odorChange").innerText =
-      Number(data.odor_change_percent).toFixed(1);
+    document.getElementById("ammoniaChange").innerText =
+      Number(data.ammonia_change_percent).toFixed(1);
 
     document.getElementById("statusValue").innerText =
       data.status;
 
-    document.getElementById("odorLevel").innerText =
-      odorText(Number(data.odor_change_percent));
+    document.getElementById("ammoniaLevel").innerText =
+      ammoniaText(Number(data.ammonia_change_percent));
 
-    // Odor 状态
-    if (Number(data.odor_change_percent) < 30) {
+    // Ammonia status
+    if (Number(data.ammonia_change_percent) < 30) {
 
-      document.getElementById("odorReview").innerText =
+      document.getElementById("ammoniaReview").innerText =
         "Normal Pattern";
 
-      document.getElementById("odorReview").className =
+      document.getElementById("ammoniaReview").className =
         "metric-note badge-good";
 
     } else {
 
-      document.getElementById("odorReview").innerText =
+      document.getElementById("ammoniaReview").innerText =
         "Review Needed";
 
-      document.getElementById("odorReview").className =
+      document.getElementById("ammoniaReview").className =
         "metric-note badge-warn";
     }
 
@@ -380,20 +380,20 @@ async function updateData() {
     window.lastPirState = pirNow;
 
     // Summary
-    if (Number(data.odor_change_percent) >= 30) {
+    if (Number(data.ammonia_change_percent) >= 30) {
 
       document.getElementById("summaryText").innerText =
-        "Odor signal is higher than baseline. Check litter box condition and keep monitoring recent behavior.";
+        "Ammonia signal is higher than baseline. Check litter box condition and keep monitoring recent behavior.";
 
     } else {
 
       document.getElementById("summaryText").innerText =
-        "Recent odor, entry frequency, and stay duration are still within normal range.";
+        "Recent ammonia, entry frequency, and stay duration are still within normal range.";
     }
 
     // 图表
-    odorHistory.push(
-      Math.max(0, Number(data.odor_change_percent))
+    ammoniaHistory.push(
+      Math.max(0, Number(data.ammonia_change_percent))
     );
 
     tempHistory.push(
@@ -404,8 +404,8 @@ async function updateData() {
       Number(data.hum_percent)
     );
 
-    if (odorHistory.length > 8) {
-      odorHistory.shift();
+    if (ammoniaHistory.length > 8) {
+      ammoniaHistory.shift();
       tempHistory.shift();
       humHistory.shift();
     }

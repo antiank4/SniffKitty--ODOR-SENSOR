@@ -68,9 +68,9 @@ static esp_err_t data_handler(httpd_req_t *req) {
   json += "\"recording\":" + String(recording ? 1 : 0) + ",";
   json += "\"post_recording\":" + String(postRecording ? 1 : 0) + ",";
   json += "\"pir\":" + String(currentPirState ? 1 : 0) + ",";
-  json += "\"mq135_raw\":" + String(currentMQ135Raw) + ",";
+  json += "\"mq137_raw\":" + String(currentMQ137Raw) + ",";
   json += "\"voltage\":" + String(currentVoltage, 3) + ",";
-  json += "\"odor_change_percent\":" + String(currentChangePercent, 1) + ",";
+  json += "\"ammonia_change_percent\":" + String(currentChangePercent, 1) + ",";
   json += "\"status\":\"" + currentStatus + "\",";
   json += "\"temp_C\":" + String(currentTempC, 2) + ",";
   json += "\"hum_percent\":" + String(currentHum, 2) + ",";

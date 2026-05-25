@@ -2,6 +2,6 @@
 #define STATUS_LED_H
 
 void initStatusLed();
-void updateStatusLedFromOdor(float changePercent);
+void updateStatusLedFromAmmonia(float changePercent);
 
 #endif

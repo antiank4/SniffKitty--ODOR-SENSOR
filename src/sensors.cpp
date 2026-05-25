@@ -25,7 +25,7 @@ float currentHum = 0;
 float currentDeltaTemp = 0;
 float currentDeltaHum = 0;
 
-int currentMQ135Raw = 0;
+int currentMQ137Raw = 0;
 float currentVoltage = 0;
 float currentChangePercent = 0;
 String currentStatus = "Waiting";
@@ -37,11 +37,11 @@ void IRAM_ATTR handlePirInterrupt() {
   pirInterruptTriggered = true;
 }
 
-int readMQ135Average() {
+int readMQ137Average() {
   long sum = 0;
 
   for (int i = 0; i < SAMPLE_COUNT; i++) {
-    sum += analogRead(MQ135_PIN);
+    sum += analogRead(MQ137_PIN);
     delay(DELAY_BETWEEN_SAMPLES);
   }
 
@@ -58,7 +58,7 @@ void calibrateBaseline() {
   int count = 0;
 
   while (millis() - startTime < calibrationTime) {
-    int val = readMQ135Average();
+    int val = readMQ137Average();
     sum += val;
     count++;
 
@@ -75,15 +75,15 @@ void calibrateBaseline() {
   Serial.println(baseline);
 }
 
-void updateStatusFromMQ135() {
+void updateStatusFromMQ137() {
   if (currentChangePercent < 10) {
     currentStatus = "Normal";
   } else if (currentChangePercent < 30) {
     currentStatus = "Slight Change";
   } else if (currentChangePercent < 80) {
-    currentStatus = "Medium Odor";
+    currentStatus = "Medium Ammonia";
   } else {
-    currentStatus = "Strong Odor!";
+    currentStatus = "Strong Ammonia!";
   }
 }
 
@@ -94,7 +94,7 @@ void initSensors() {
 
   Wire.begin(AHT_SDA, AHT_SCL);
 
-  Serial.println("MQ135 + PIR interrupt + AHT10 + Web Dashboard start...");
+  Serial.println("MQ137 + PIR interrupt + AHT10 + Web Dashboard start...");
 
   if (!aht.begin()) {
     Serial.println("AHT10 not found!");
@@ -211,17 +211,17 @@ void updateSensors() {
     }
   }
 
-  currentMQ135Raw = readMQ135Average();
-  currentVoltage = currentMQ135Raw * (3.3 / 4095.0);
+  currentMQ137Raw = readMQ137Average();
+  currentVoltage = currentMQ137Raw * (3.3 / 4095.0);
 
   if (baseline > 0) {
-    currentChangePercent = ((float)(currentMQ135Raw - baseline) / baseline) * 100;
+    currentChangePercent = ((float)(currentMQ137Raw - baseline) / baseline) * 100;
   } else {
     currentChangePercent = 0;
   }
 
-  updateStatusFromMQ135();
-  updateStatusLedFromOdor(currentChangePercent);
+  updateStatusFromMQ137();
+  updateStatusLedFromAmmonia(currentChangePercent);
 }
 
 void printSensorStatus() {
@@ -229,8 +229,8 @@ void printSensorStatus() {
   Serial.print(currentTempC, 2);
   Serial.print(" C | Hum: ");
   Serial.print(currentHum, 2);
-  Serial.print(" % | MQ135: ");
-  Serial.print(currentMQ135Raw);
+  Serial.print(" % | MQ137: ");
+  Serial.print(currentMQ137Raw);
   Serial.print(" | PIR: ");
   Serial.print(currentPirState ? 1 : 0);
   Serial.print(" | PIR raw: ");
@@ -283,7 +283,7 @@ void printCSVIfRecording() {
   csvLine += ",";
   csvLine += String(currentPirState ? 1 : 0);
   csvLine += ",";
-  csvLine += String(currentMQ135Raw);
+  csvLine += String(currentMQ137Raw);
   csvLine += ",";
   csvLine += String(currentVoltage, 3);
   csvLine += ",";

@@ -40,7 +40,7 @@ void initStorage() {
   }
 
   if (file.size() == 0) {
-    file.println("CSV,time_ms,recording,pir,mq135_raw,voltage,odor_change_percent,status,temp_C,hum_percent,delta_temp,delta_hum");
+    file.println("CSV,time_ms,recording,pir,mq137_raw,voltage,ammonia_change_percent,status,temp_C,hum_percent,delta_temp,delta_hum");
   }
 
   file.close();

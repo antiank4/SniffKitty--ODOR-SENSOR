@@ -28,7 +28,7 @@ extern float currentHum;
 extern float currentDeltaTemp;
 extern float currentDeltaHum;
 
-extern int currentMQ135Raw;
+extern int currentMQ137Raw;
 extern float currentVoltage;
 extern float currentChangePercent;
 extern String currentStatus;
@@ -38,9 +38,9 @@ extern int currentPirTriggerSamples;
 
 void IRAM_ATTR handlePirInterrupt();
 
-int readMQ135Average();
+int readMQ137Average();
 void calibrateBaseline();
-void updateStatusFromMQ135();
+void updateStatusFromMQ137();
 void initSensors();
 void updateSensors();
 void printSensorStatus();

@@ -3,9 +3,9 @@ import csv
 import time
 import os
 
-PORT = "COM5"  
+PORT = "COM5"
 BAUD = 115200
-CSV_FILE = "mq135_data.csv"
+CSV_FILE = "mq137_data.csv"
 
 ser = serial.Serial(PORT, BAUD, timeout=1)
 time.sleep(2)
@@ -37,7 +37,7 @@ with open(CSV_FILE, "a", newline="", encoding="utf-8") as f:
             parts = line.split(",")
 
             if len(parts) == 6:
-                writer.writerow(parts[1:]) 
+                writer.writerow(parts[1:])
                 f.flush()
                 print("Saved:", parts[1:])
 

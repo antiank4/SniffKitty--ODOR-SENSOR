@@ -24,7 +24,7 @@ void setup() {
   calibrateBaseline();
 
   Serial.println("Waiting for PIR trigger...");
-  Serial.println("CSV,time_ms,recording,pir,mq135_raw,voltage,odor_change_percent,status,temp_C,hum_percent,delta_temp,delta_hum");
+  Serial.println("CSV,time_ms,recording,pir,mq137_raw,voltage,ammonia_change_percent,status,temp_C,hum_percent,delta_temp,delta_hum");
 }
 
 void loop() {

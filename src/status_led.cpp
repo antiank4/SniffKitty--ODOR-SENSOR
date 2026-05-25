@@ -20,7 +20,7 @@ void initStatusLed() {
   setStatusLed(0, 0, STATUS_LED_BRIGHTNESS);
 }
 
-void updateStatusLedFromOdor(float changePercent) {
+void updateStatusLedFromAmmonia(float changePercent) {
   if (!STATUS_LED_ENABLED) {
     return;
   }

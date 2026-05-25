@@ -6,7 +6,7 @@
 extern const char* ssid;
 extern const char* password;
 
-const int MQ135_PIN = 1;
+const int MQ137_PIN = 1;
 const int PIR_PIN = 2;
 const int PIR_ACTIVE_LEVEL = HIGH;
 
@@ -18,7 +18,7 @@ const int SD_MISO_PIN = 41;
 const int SD_MOSI_PIN = 47;
 const int SD_CS_PIN = 45;
 const uint32_t SD_SPI_FREQ = 400000;
-const char* const SD_LOG_PATH = "/mq135_data.csv";
+const char* const SD_LOG_PATH = "/mq137_data.csv";
 
 const bool STATUS_LED_ENABLED = true;
 const int STATUS_LED_PIN = 48;
