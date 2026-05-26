@@ -7,9 +7,6 @@ extern const char* ssid;
 extern const char* password;
 
 const int MQ137_PIN = 1;
-const int PIR_PIN = 2;
-const int PIR_ACTIVE_LEVEL = HIGH;
-
 const int AHT_SDA = 14;
 const int AHT_SCL = 21;
 
@@ -30,12 +27,17 @@ const float LED_STRONG_CHANGE_PERCENT = 80.0;
 const int SAMPLE_COUNT = 2;
 const int DELAY_BETWEEN_SAMPLES = 2;
 
-const unsigned long PIR_COOLDOWN = 0;
-const unsigned long PIR_IGNORE_AFTER_TRIGGER = 5000;
-const unsigned long PIR_RECORD_AFTER_CLOSE_MS = 20000;
-const int PIR_TRIGGER_SAMPLE_MIN = 3;
-const int PIR_RELEASE_SAMPLE_MIN = 2;
-const unsigned long PIR_EVENT_LOCKOUT_MS = 3000;
+const unsigned long PRESENCE_IGNORE_AFTER_TRIGGER = 5000;
+const unsigned long PRESENCE_RECORD_AFTER_EMPTY_MS = 20000;
+
+const unsigned long CAMERA_BASELINE_DELAY_MS = 10000;
+const unsigned long CAMERA_CHECK_INTERVAL_MS = 1000;
+const int CAMERA_COMPARE_SAMPLE_STEP = 8;
+const int CAMERA_PIXEL_DIFF_THRESHOLD = 35;
+const float CAMERA_PRESENT_CHANGE_PERCENT = 7.0;
+const float CAMERA_EMPTY_CHANGE_PERCENT = 6.0;
+const int CAMERA_PRESENT_SAMPLE_MIN = 2;
+const int CAMERA_EMPTY_SAMPLE_MIN = 2;
 
 #define PWDN_GPIO_NUM     -1
 #define RESET_GPIO_NUM    -1

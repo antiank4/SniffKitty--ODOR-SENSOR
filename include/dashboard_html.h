@@ -95,9 +95,9 @@ const char DASHBOARD_HTML[] = R"rawliteral(
           </div>
 
           <div class="metric">
-            <div class="metric-title">Entry Frequency</div>
+            <div class="metric-title">Visit Frequency</div>
             <div class="metric-value" id="entryFreq">--</div>
-            <div class="metric-note">Based on PIR activity<br>Current status: <span id="pirValue">--</span></div>
+            <div class="metric-note">Based on camera presence<br>Current status: <span id="presenceValue">--</span></div>
             <div class="metric-note badge-good">Healthy Pattern</div>
           </div>
 
@@ -304,8 +304,8 @@ async function updateData() {
     if (window.entryCount === undefined)
       window.entryCount = 0;
 
-    if (window.lastPirState === undefined)
-      window.lastPirState = 0;
+    if (window.lastPresenceState === undefined)
+      window.lastPresenceState = 0;
 
     if (window.stayStartTime === undefined)
       window.stayStartTime = null;
@@ -313,11 +313,11 @@ async function updateData() {
     if (window.entryCountedThisVisit === undefined)
       window.entryCountedThisVisit = false;
 
-    let pirNow = Number(data.pir);
+    let presentNow = Number(data.present);
     const entryMinDurationMs = 5000;
 
-    // PIR 从 0 -> 1
-    if (pirNow === 1 && window.lastPirState === 0) {
+    // Presence 0 -> 1
+    if (presentNow === 1 && window.lastPresenceState === 0) {
 
 
       // 开始时间
@@ -329,8 +329,8 @@ async function updateData() {
         "0 sec";
     }
 
-    // PIR 持续为 1
-    if (pirNow === 1) {
+    // Presence stays 1
+    if (presentNow === 1) {
 
       let sec = 0;
 
@@ -355,12 +355,12 @@ async function updateData() {
       document.getElementById("entryFreq").innerText =
         window.entryCount + "/day";
 
-      document.getElementById("pirValue").innerText =
-        "Active";
+      document.getElementById("presenceValue").innerText =
+        "Present";
     }
 
-    // PIR = 0
-    if (pirNow === 0) {
+    // Presence = 0
+    if (presentNow === 0) {
 
       // 立刻清零
       window.stayStartTime = null;
@@ -372,12 +372,12 @@ async function updateData() {
       document.getElementById("entryFreq").innerText =
         window.entryCount + "/day";
 
-      document.getElementById("pirValue").innerText =
-        "Idle";
+      document.getElementById("presenceValue").innerText =
+        "Empty";
     }
 
     // 更新上一状态
-    window.lastPirState = pirNow;
+    window.lastPresenceState = presentNow;
 
     // Summary
     if (Number(data.ammonia_change_percent) >= 30) {

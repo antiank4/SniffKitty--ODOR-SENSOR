@@ -15,8 +15,6 @@ extern unsigned long lastTriggerTime;
 extern unsigned long recordingStartTime;
 extern unsigned long postRecordingEndTime;
 
-extern volatile bool pirInterruptTriggered;
-
 extern Adafruit_AHTX0 aht;
 extern bool ahtReady;
 
@@ -32,11 +30,7 @@ extern int currentMQ137Raw;
 extern float currentVoltage;
 extern float currentChangePercent;
 extern String currentStatus;
-extern bool currentPirState;
-extern int currentPirRawLevel;
-extern int currentPirTriggerSamples;
-
-void IRAM_ATTR handlePirInterrupt();
+extern bool currentPresenceState;
 
 int readMQ137Average();
 void calibrateBaseline();

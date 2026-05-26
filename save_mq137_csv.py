@@ -19,7 +19,19 @@ with open(CSV_FILE, "a", newline="", encoding="utf-8") as f:
     writer = csv.writer(f)
 
     if not file_exists:
-        writer.writerow(["time_ms", "raw", "voltage", "change_percent", "status"])
+        writer.writerow([
+            "time_ms",
+            "recording",
+            "present",
+            "mq137_raw",
+            "voltage",
+            "ammonia_change_percent",
+            "status",
+            "temp_C",
+            "hum_percent",
+            "delta_temp",
+            "delta_hum",
+        ])
         f.flush()
 
     while True:
@@ -36,7 +48,7 @@ with open(CSV_FILE, "a", newline="", encoding="utf-8") as f:
 
             parts = line.split(",")
 
-            if len(parts) == 6:
+            if len(parts) == 12:
                 writer.writerow(parts[1:])
                 f.flush()
                 print("Saved:", parts[1:])

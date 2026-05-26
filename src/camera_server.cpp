@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include "esp_camera.h"
 #include "esp_http_server.h"
+#include "img_converters.h"
 
 #include "config.h"
 #include "sensors.h"
@@ -10,6 +11,82 @@
 
 const char* ssid = "eduroam";
 const char* password = "***REMOVED***";
+
+bool cameraBaselineReady = false;
+bool currentCameraPresent = false;
+float currentCameraChangePercent = 0;
+
+static uint8_t* cameraBaselineFrame = NULL;
+static size_t cameraBaselineLength = 0;
+static float cameraBaselineMean = 0;
+
+static bool captureGrayscaleSnapshot(uint8_t** grayFrame, size_t* grayLength, float* grayMean, const char* label) {
+  camera_fb_t* fb = NULL;
+
+  for (int attempt = 0; attempt < 5 && fb == NULL; attempt++) {
+    fb = esp_camera_fb_get();
+
+    if (fb == NULL) {
+      delay(80);
+    }
+  }
+
+  if (!fb) {
+    Serial.print(label);
+    Serial.println(": camera frame unavailable");
+    return false;
+  }
+
+  size_t pixelCount = fb->width * fb->height;
+  uint8_t* rgbFrame = (uint8_t*)malloc(pixelCount * 3);
+
+  if (rgbFrame == NULL) {
+    Serial.print(label);
+    Serial.print(": RGB buffer allocation failed, bytes=");
+    Serial.println(pixelCount * 3);
+    esp_camera_fb_return(fb);
+    return false;
+  }
+
+  bool converted = fmt2rgb888(fb->buf, fb->len, fb->format, rgbFrame);
+  esp_camera_fb_return(fb);
+
+  if (!converted) {
+    Serial.print(label);
+    Serial.println(": JPEG to RGB conversion failed");
+    free(rgbFrame);
+    return false;
+  }
+
+  uint8_t* gray = (uint8_t*)malloc(pixelCount);
+
+  if (gray == NULL) {
+    Serial.print(label);
+    Serial.print(": gray buffer allocation failed, bytes=");
+    Serial.println(pixelCount);
+    free(rgbFrame);
+    return false;
+  }
+
+  unsigned long sum = 0;
+
+  for (size_t i = 0; i < pixelCount; i++) {
+    size_t rgbIndex = i * 3;
+    uint8_t value = (uint8_t)(
+      ((uint16_t)rgbFrame[rgbIndex] + (uint16_t)rgbFrame[rgbIndex + 1] + (uint16_t)rgbFrame[rgbIndex + 2]) / 3
+    );
+    gray[i] = value;
+    sum += value;
+  }
+
+  free(rgbFrame);
+
+  *grayFrame = gray;
+  *grayLength = pixelCount;
+  *grayMean = pixelCount > 0 ? (float)sum / pixelCount : 0;
+
+  return true;
+}
 
 void initCamera() {
   Serial.println("Camera init start...");
@@ -39,11 +116,11 @@ void initCamera() {
 
   config.pixel_format = PIXFORMAT_JPEG;
   config.xclk_freq_hz = 10000000;
-  config.frame_size = FRAMESIZE_QVGA;
+  config.frame_size = psramFound() ? FRAMESIZE_QVGA : FRAMESIZE_QQVGA;
   config.jpeg_quality = 12;
-  config.fb_count = 1;
-  config.fb_location = CAMERA_FB_IN_DRAM;
-  config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+  config.fb_count = 2;
+  config.fb_location = psramFound() ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM;
+  config.grab_mode = CAMERA_GRAB_LATEST;
 
   esp_err_t err = esp_camera_init(&config);
 
@@ -62,12 +139,139 @@ void initCamera() {
   Serial.println("Camera init success!");
 }
 
+void captureCameraBaselineAfterDelay() {
+  Serial.print("Camera baseline will be captured in ");
+  Serial.print(CAMERA_BASELINE_DELAY_MS / 1000);
+  Serial.println(" seconds. Keep the litter box empty.");
+
+  unsigned long startTime = millis();
+  while (millis() - startTime < CAMERA_BASELINE_DELAY_MS) {
+    unsigned long remainingMs = CAMERA_BASELINE_DELAY_MS - (millis() - startTime);
+    Serial.print("Baseline capture in ");
+    Serial.print((remainingMs + 999) / 1000);
+    Serial.println("s");
+    delay(1000);
+  }
+
+  uint8_t* grayFrame = NULL;
+  size_t grayLength = 0;
+  float grayMean = 0;
+
+  if (!captureGrayscaleSnapshot(&grayFrame, &grayLength, &grayMean, "Camera baseline")) {
+    Serial.println("Camera baseline capture failed.");
+    cameraBaselineReady = false;
+    return;
+  }
+
+  if (cameraBaselineFrame != NULL) {
+    free(cameraBaselineFrame);
+    cameraBaselineFrame = NULL;
+  }
+
+  cameraBaselineFrame = grayFrame;
+  cameraBaselineLength = grayLength;
+  cameraBaselineMean = grayMean;
+
+  currentCameraChangePercent = 0;
+  currentCameraPresent = false;
+  cameraBaselineReady = true;
+
+  Serial.print("Camera baseline captured. Bytes: ");
+  Serial.println(cameraBaselineLength);
+}
+
+bool updateCameraPresence() {
+  static unsigned long lastCheckTime = 0;
+  static int presentSamples = 0;
+  static int emptySamples = CAMERA_EMPTY_SAMPLE_MIN;
+
+  if (!cameraBaselineReady || cameraBaselineFrame == NULL) {
+    currentCameraPresent = false;
+    currentCameraChangePercent = 0;
+    return currentCameraPresent;
+  }
+
+  if (millis() - lastCheckTime < CAMERA_CHECK_INTERVAL_MS) {
+    return currentCameraPresent;
+  }
+
+  lastCheckTime = millis();
+
+  uint8_t* grayFrame = NULL;
+  size_t grayLength = 0;
+  float grayMean = 0;
+
+  if (!captureGrayscaleSnapshot(&grayFrame, &grayLength, &grayMean, "Camera presence")) {
+    Serial.println("Camera presence capture failed.");
+    return currentCameraPresent;
+  }
+
+  if (grayLength != cameraBaselineLength) {
+    Serial.println("Camera frame size changed; presence check skipped.");
+    free(grayFrame);
+    return currentCameraPresent;
+  }
+
+  float brightnessShift = grayMean - cameraBaselineMean;
+  int changedSamples = 0;
+  int totalSamples = 0;
+
+  for (size_t i = 0; i < cameraBaselineLength; i += CAMERA_COMPARE_SAMPLE_STEP) {
+    float adjustedCurrent = (float)grayFrame[i] - brightnessShift;
+    int diff = abs((int)(adjustedCurrent - (float)cameraBaselineFrame[i]));
+    if (diff >= CAMERA_PIXEL_DIFF_THRESHOLD) {
+      changedSamples++;
+    }
+    totalSamples++;
+  }
+
+  free(grayFrame);
+
+  if (totalSamples > 0) {
+    currentCameraChangePercent = ((float)changedSamples / totalSamples) * 100.0;
+  } else {
+    currentCameraChangePercent = 0;
+  }
+
+  bool rawPresent = currentCameraPresent
+    ? currentCameraChangePercent > CAMERA_EMPTY_CHANGE_PERCENT
+    : currentCameraChangePercent >= CAMERA_PRESENT_CHANGE_PERCENT;
+
+  if (rawPresent) {
+    if (presentSamples < CAMERA_PRESENT_SAMPLE_MIN) {
+      presentSamples++;
+    }
+    emptySamples = 0;
+  } else {
+    if (emptySamples < CAMERA_EMPTY_SAMPLE_MIN) {
+      emptySamples++;
+    }
+    presentSamples = 0;
+  }
+
+  if (!currentCameraPresent && presentSamples >= CAMERA_PRESENT_SAMPLE_MIN) {
+    currentCameraPresent = true;
+    Serial.print("Camera state: PRESENT, change ");
+    Serial.print(currentCameraChangePercent, 1);
+    Serial.println("%");
+  } else if (currentCameraPresent && emptySamples >= CAMERA_EMPTY_SAMPLE_MIN) {
+    currentCameraPresent = false;
+    Serial.print("Camera state: EMPTY, change ");
+    Serial.print(currentCameraChangePercent, 1);
+    Serial.println("%");
+  }
+
+  return currentCameraPresent;
+}
+
 static esp_err_t data_handler(httpd_req_t *req) {
   String json = "{";
   json += "\"time_ms\":" + String(millis()) + ",";
   json += "\"recording\":" + String(recording ? 1 : 0) + ",";
   json += "\"post_recording\":" + String(postRecording ? 1 : 0) + ",";
-  json += "\"pir\":" + String(currentPirState ? 1 : 0) + ",";
+  json += "\"present\":" + String(currentPresenceState ? 1 : 0) + ",";
+  json += "\"camera_baseline_ready\":" + String(cameraBaselineReady ? 1 : 0) + ",";
+  json += "\"camera_change_percent\":" + String(currentCameraChangePercent, 1) + ",";
   json += "\"mq137_raw\":" + String(currentMQ137Raw) + ",";
   json += "\"voltage\":" + String(currentVoltage, 3) + ",";
   json += "\"ammonia_change_percent\":" + String(currentChangePercent, 1) + ",";
@@ -97,11 +301,29 @@ static esp_err_t stream_handler(httpd_req_t *req) {
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
 
   while (true) {
+    if (!cameraBaselineReady) {
+      delay(200);
+      continue;
+    }
+
     fb = esp_camera_fb_get();
 
     if (!fb) {
       Serial.println("Camera capture failed");
       return ESP_FAIL;
+    }
+
+    uint8_t* jpgBuf = fb->buf;
+    size_t jpgLen = fb->len;
+    bool converted = false;
+
+    if (fb->format != PIXFORMAT_JPEG) {
+      if (!frame2jpg(fb, 80, &jpgBuf, &jpgLen)) {
+        Serial.println("Camera JPEG conversion failed");
+        esp_camera_fb_return(fb);
+        return ESP_FAIL;
+      }
+      converted = true;
     }
 
     char part_buf[64];
@@ -110,17 +332,21 @@ static esp_err_t stream_handler(httpd_req_t *req) {
       part_buf,
       64,
       "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n",
-      fb->len
+      jpgLen
     );
 
     res = httpd_resp_send_chunk(req, part_buf, hlen);
 
     if (res == ESP_OK) {
-      res = httpd_resp_send_chunk(req, (const char *)fb->buf, fb->len);
+      res = httpd_resp_send_chunk(req, (const char *)jpgBuf, jpgLen);
     }
 
     if (res == ESP_OK) {
       res = httpd_resp_send_chunk(req, "\r\n", 2);
+    }
+
+    if (converted) {
+      free(jpgBuf);
     }
 
     esp_camera_fb_return(fb);
@@ -129,7 +355,7 @@ static esp_err_t stream_handler(httpd_req_t *req) {
       break;
     }
 
-    delay(5);
+    delay(80);
   }
 
   return res;

@@ -1,4 +1,5 @@
 #include "sensors.h"
+#include "camera_server.h"
 #include "config.h"
 #include "storage.h"
 #include "status_led.h"
@@ -11,8 +12,6 @@ unsigned long lastTriggerTime = 0;
 unsigned long recordingStartTime = 0;
 bool postRecording = false;
 unsigned long postRecordingEndTime = 0;
-
-volatile bool pirInterruptTriggered = false;
 
 Adafruit_AHTX0 aht;
 bool ahtReady = false;
@@ -29,13 +28,7 @@ int currentMQ137Raw = 0;
 float currentVoltage = 0;
 float currentChangePercent = 0;
 String currentStatus = "Waiting";
-bool currentPirState = false;
-int currentPirRawLevel = HIGH;
-int currentPirTriggerSamples = 0;
-
-void IRAM_ATTR handlePirInterrupt() {
-  pirInterruptTriggered = true;
-}
+bool currentPresenceState = false;
 
 int readMQ137Average() {
   long sum = 0;
@@ -90,11 +83,9 @@ void updateStatusFromMQ137() {
 void initSensors() {
   analogReadResolution(12);
 
-  pinMode(PIR_PIN, INPUT);
-
   Wire.begin(AHT_SDA, AHT_SCL);
 
-  Serial.println("MQ137 + PIR interrupt + AHT10 + Web Dashboard start...");
+  Serial.println("MQ137 + camera presence + AHT10 + Web Dashboard start...");
 
   if (!aht.begin()) {
     Serial.println("AHT10 not found!");
@@ -106,65 +97,24 @@ void initSensors() {
 }
 
 void updateSensors() {
-  static int activeSampleCount = 0;
-  static int clearSampleCount = PIR_RELEASE_SAMPLE_MIN;
-  static bool pirArmed = true;
-  static unsigned long lastPirEventTime = 0;
+  bool previousPresenceState = currentPresenceState;
+  currentPresenceState = updateCameraPresence();
 
-  currentPirRawLevel = digitalRead(PIR_PIN);
-  bool rawPirState = (currentPirRawLevel == PIR_ACTIVE_LEVEL);
-  bool pirEvent = false;
-
-  if (rawPirState) {
-    if (pirArmed && activeSampleCount < PIR_TRIGGER_SAMPLE_MIN) {
-      activeSampleCount++;
-    }
-    clearSampleCount = 0;
-  } else {
-    activeSampleCount = 0;
-    clearSampleCount++;
-
-    if (clearSampleCount >= PIR_RELEASE_SAMPLE_MIN) {
-      pirArmed = true;
-    }
-  }
-
-  if (
-    pirArmed &&
-    activeSampleCount >= PIR_TRIGGER_SAMPLE_MIN &&
-    millis() - lastPirEventTime >= PIR_EVENT_LOCKOUT_MS
-  ) {
-    pirEvent = true;
-    pirArmed = false;
-    lastPirEventTime = millis();
-    activeSampleCount = 0;
-  }
-
-  if (pirEvent) {
-    currentPirState = !currentPirState;
-  }
-
-  currentPirTriggerSamples = activeSampleCount;
-
-  noInterrupts();
-  pirInterruptTriggered = false;
-  interrupts();
-
-  if (currentPirState) {
+  if (currentPresenceState) {
     if (postRecording) {
       postRecording = false;
-      Serial.println("PIR detected: cancel post recording");
+      Serial.println("Camera present: cancel post-empty recording");
     }
 
-    if (!recording && millis() - lastTriggerTime > PIR_COOLDOWN) {
+    if (!recording) {
       recording = true;
       lastTriggerTime = millis();
       recordingStartTime = millis();
 
-      Serial.println("PIR detected: START recording");
+      Serial.println("Camera present: START recording");
       Serial.print("Ignoring first ");
-      Serial.print(PIR_IGNORE_AFTER_TRIGGER / 1000);
-      Serial.println(" seconds of data after PIR trigger");
+      Serial.print(PRESENCE_IGNORE_AFTER_TRIGGER / 1000);
+      Serial.println(" seconds of data after present trigger");
 
       if (ahtReady) {
         sensors_event_t humidity, temp;
@@ -174,18 +124,18 @@ void updateSensors() {
         baseHum = humidity.relative_humidity;
       }
     }
-  } else if (recording && !postRecording) {
+  } else if (previousPresenceState && recording && !postRecording) {
     lastTriggerTime = millis();
 
-    if (millis() - recordingStartTime >= PIR_IGNORE_AFTER_TRIGGER) {
+    if (millis() - recordingStartTime >= PRESENCE_IGNORE_AFTER_TRIGGER) {
       postRecording = true;
-      postRecordingEndTime = millis() + PIR_RECORD_AFTER_CLOSE_MS;
-      Serial.print("PIR clear: post recording for ");
-      Serial.print(PIR_RECORD_AFTER_CLOSE_MS / 1000);
+      postRecordingEndTime = millis() + PRESENCE_RECORD_AFTER_EMPTY_MS;
+      Serial.print("Camera empty: post recording for ");
+      Serial.print(PRESENCE_RECORD_AFTER_EMPTY_MS / 1000);
       Serial.println(" seconds");
     } else {
       recording = false;
-      Serial.println("PIR clear: STOP recording short trigger ignored");
+      Serial.println("Camera empty: STOP recording short trigger ignored");
     }
   }
 
@@ -231,12 +181,11 @@ void printSensorStatus() {
   Serial.print(currentHum, 2);
   Serial.print(" % | MQ137: ");
   Serial.print(currentMQ137Raw);
-  Serial.print(" | PIR: ");
-  Serial.print(currentPirState ? 1 : 0);
-  Serial.print(" | PIR raw: ");
-  Serial.print(currentPirRawLevel);
-  Serial.print(" | PIR trigger samples: ");
-  Serial.print(currentPirTriggerSamples);
+  Serial.print(" | Camera: ");
+  Serial.print(currentPresenceState ? "present" : "empty");
+  Serial.print(" | Camera change: ");
+  Serial.print(currentCameraChangePercent, 1);
+  Serial.print("%");
   Serial.print(" | Recording: ");
   if (postRecording) {
     unsigned long remainingMs = 0;
@@ -270,8 +219,8 @@ void printCSVIfRecording() {
     return;
   }
 
-  if (millis() - recordingStartTime < PIR_IGNORE_AFTER_TRIGGER) {
-    Serial.println("Ignoring unstable data after PIR trigger...");
+  if (millis() - recordingStartTime < PRESENCE_IGNORE_AFTER_TRIGGER) {
+    Serial.println("Ignoring unstable data after present trigger...");
     delay(1000);
     return;
   }
@@ -281,7 +230,7 @@ void printCSVIfRecording() {
   csvLine += ",";
   csvLine += String(recording ? 1 : 0);
   csvLine += ",";
-  csvLine += String(currentPirState ? 1 : 0);
+  csvLine += String(currentPresenceState ? 1 : 0);
   csvLine += ",";
   csvLine += String(currentMQ137Raw);
   csvLine += ",";
