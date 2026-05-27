@@ -20,6 +20,27 @@ void initStatusLed() {
   setStatusLed(0, 0, STATUS_LED_BRIGHTNESS);
 }
 
+void setStatusLedBlue() {
+  setStatusLed(0, 0, STATUS_LED_BRIGHTNESS);
+}
+
+void clearStatusLed() {
+  setStatusLed(0, 0, 0);
+}
+
+void blinkStatusLedBlue(uint8_t pulses, unsigned long onMs, unsigned long offMs) {
+  if (!STATUS_LED_ENABLED) {
+    return;
+  }
+
+  for (uint8_t i = 0; i < pulses; i++) {
+    setStatusLedBlue();
+    delay(onMs);
+    clearStatusLed();
+    delay(offMs);
+  }
+}
+
 void updateStatusLedFromAmmonia(float changePercent) {
   if (!STATUS_LED_ENABLED) {
     return;

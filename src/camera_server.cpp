@@ -8,6 +8,7 @@
 #include "sensors.h"
 #include "dashboard_html.h"
 #include "camera_server.h"
+#include "status_led.h"
 
 const char* ssid = "eduroam";
 const char* password = "***REMOVED***";
@@ -20,7 +21,17 @@ static uint8_t* cameraBaselineFrame = NULL;
 static size_t cameraBaselineLength = 0;
 static float cameraBaselineMean = 0;
 
-static bool captureGrayscaleSnapshot(uint8_t** grayFrame, size_t* grayLength, float* grayMean, const char* label) {
+static bool captureGrayscaleSnapshot(
+  uint8_t** grayFrame,
+  size_t* grayLength,
+  float* grayMean,
+  const char* label,
+  bool showCaptureBlink
+) {
+  if (showCaptureBlink) {
+    blinkStatusLedBlue(2, 40, 40);
+  }
+
   camera_fb_t* fb = NULL;
 
   for (int attempt = 0; attempt < 5 && fb == NULL; attempt++) {
@@ -150,14 +161,17 @@ void captureCameraBaselineAfterDelay() {
     Serial.print("Baseline capture in ");
     Serial.print((remainingMs + 999) / 1000);
     Serial.println("s");
-    delay(1000);
+    setStatusLedBlue();
+    delay(500);
+    clearStatusLed();
+    delay(500);
   }
 
   uint8_t* grayFrame = NULL;
   size_t grayLength = 0;
   float grayMean = 0;
 
-  if (!captureGrayscaleSnapshot(&grayFrame, &grayLength, &grayMean, "Camera baseline")) {
+  if (!captureGrayscaleSnapshot(&grayFrame, &grayLength, &grayMean, "Camera baseline", false)) {
     Serial.println("Camera baseline capture failed.");
     cameraBaselineReady = false;
     return;
@@ -201,7 +215,7 @@ bool updateCameraPresence() {
   size_t grayLength = 0;
   float grayMean = 0;
 
-  if (!captureGrayscaleSnapshot(&grayFrame, &grayLength, &grayMean, "Camera presence")) {
+  if (!captureGrayscaleSnapshot(&grayFrame, &grayLength, &grayMean, "Camera presence", true)) {
     Serial.println("Camera presence capture failed.");
     return currentCameraPresent;
   }
@@ -213,29 +227,40 @@ bool updateCameraPresence() {
   }
 
   float brightnessShift = grayMean - cameraBaselineMean;
-  int changedSamples = 0;
+  int rawChangedSamples = 0;
+  int adjustedChangedSamples = 0;
   int totalSamples = 0;
 
   for (size_t i = 0; i < cameraBaselineLength; i += CAMERA_COMPARE_SAMPLE_STEP) {
-    float adjustedCurrent = (float)grayFrame[i] - brightnessShift;
-    int diff = abs((int)(adjustedCurrent - (float)cameraBaselineFrame[i]));
-    if (diff >= CAMERA_PIXEL_DIFF_THRESHOLD) {
-      changedSamples++;
+    int rawDiff = abs((int)grayFrame[i] - (int)cameraBaselineFrame[i]);
+    if (rawDiff >= CAMERA_PIXEL_DIFF_THRESHOLD) {
+      rawChangedSamples++;
     }
+
+    float adjustedCurrent = (float)grayFrame[i] - brightnessShift;
+    int adjustedDiff = abs((int)(adjustedCurrent - (float)cameraBaselineFrame[i]));
+    if (adjustedDiff >= CAMERA_PIXEL_DIFF_THRESHOLD) {
+      adjustedChangedSamples++;
+    }
+
     totalSamples++;
   }
 
   free(grayFrame);
 
   if (totalSamples > 0) {
-    currentCameraChangePercent = ((float)changedSamples / totalSamples) * 100.0;
+    currentCameraChangePercent = ((float)rawChangedSamples / totalSamples) * 100.0;
   } else {
     currentCameraChangePercent = 0;
   }
 
+  float adjustedChangePercent = totalSamples > 0
+    ? ((float)adjustedChangedSamples / totalSamples) * 100.0
+    : 0;
+
   bool rawPresent = currentCameraPresent
-    ? currentCameraChangePercent > CAMERA_EMPTY_CHANGE_PERCENT
-    : currentCameraChangePercent >= CAMERA_PRESENT_CHANGE_PERCENT;
+    ? adjustedChangePercent > CAMERA_EMPTY_CHANGE_PERCENT
+    : adjustedChangePercent >= CAMERA_PRESENT_CHANGE_PERCENT;
 
   if (rawPresent) {
     if (presentSamples < CAMERA_PRESENT_SAMPLE_MIN) {
@@ -253,11 +278,15 @@ bool updateCameraPresence() {
     currentCameraPresent = true;
     Serial.print("Camera state: PRESENT, change ");
     Serial.print(currentCameraChangePercent, 1);
+    Serial.print("%, adjusted ");
+    Serial.print(adjustedChangePercent, 1);
     Serial.println("%");
   } else if (currentCameraPresent && emptySamples >= CAMERA_EMPTY_SAMPLE_MIN) {
     currentCameraPresent = false;
     Serial.print("Camera state: EMPTY, change ");
     Serial.print(currentCameraChangePercent, 1);
+    Serial.print("%, adjusted ");
+    Serial.print(adjustedChangePercent, 1);
     Serial.println("%");
   }
 
