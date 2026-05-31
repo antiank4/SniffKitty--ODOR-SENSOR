@@ -7,6 +7,7 @@ extern const char* ssid;
 extern const char* password;
 
 const int MQ137_PIN = 1;
+const int MQ135_PIN = 2;
 const int AHT_SDA = 14;
 const int AHT_SCL = 21;
 
@@ -15,7 +16,7 @@ const int SD_MISO_PIN = 41;
 const int SD_MOSI_PIN = 47;
 const int SD_CS_PIN = 45;
 const uint32_t SD_SPI_FREQ = 400000;
-const char* const SD_LOG_PATH = "/mq137_data.csv";
+const char* const SD_LOG_PATH = "/gas_data.csv";
 
 const bool STATUS_LED_ENABLED = true;
 const int STATUS_LED_PIN = 48;
@@ -26,6 +27,9 @@ const float LED_STRONG_CHANGE_PERCENT = 80.0;
 
 const int SAMPLE_COUNT = 2;
 const int DELAY_BETWEEN_SAMPLES = 2;
+const int MQ135_SAMPLE_COUNT = 12;
+const float MQ135_FILTER_ALPHA = 0.18;
+const int MQ135_RAW_DEADBAND = 3;
 
 const unsigned long PRESENCE_IGNORE_AFTER_TRIGGER = 5000;
 const unsigned long PRESENCE_RECORD_AFTER_EMPTY_MS = 20000;

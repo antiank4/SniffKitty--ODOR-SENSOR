@@ -6,6 +6,7 @@
 #include <Wire.h>
 
 int baseline = 0;
+int mq135Baseline = 0;
 
 bool recording = false;
 unsigned long lastTriggerTime = 0;
@@ -28,31 +29,55 @@ int currentMQ137Raw = 0;
 float currentVoltage = 0;
 float currentChangePercent = 0;
 String currentStatus = "Waiting";
+int currentMQ135Raw = 0;
+float currentMQ135Voltage = 0;
+float currentMQ135ChangePercent = 0;
+String currentMQ135Status = "Waiting";
 bool currentPresenceState = false;
 
-int readMQ137Average() {
+static int readGasAverage(int pin, int sampleCount) {
   long sum = 0;
+  int minVal = 4095;
+  int maxVal = 0;
 
-  for (int i = 0; i < SAMPLE_COUNT; i++) {
-    sum += analogRead(MQ137_PIN);
+  for (int i = 0; i < sampleCount; i++) {
+    int val = analogRead(pin);
+    sum += val;
+    minVal = min(minVal, val);
+    maxVal = max(maxVal, val);
     delay(DELAY_BETWEEN_SAMPLES);
   }
 
-  return sum / SAMPLE_COUNT;
+  if (sampleCount > 2) {
+    sum -= minVal;
+    sum -= maxVal;
+    return sum / (sampleCount - 2);
+  }
+
+  return sum / sampleCount;
+}
+
+int readMQ137Average() {
+  return readGasAverage(MQ137_PIN, SAMPLE_COUNT);
+}
+
+int readMQ135Average() {
+  return readGasAverage(MQ135_PIN, MQ135_SAMPLE_COUNT);
 }
 
 void calibrateBaseline() {
-  Serial.println("Calibrating... keep air clean");
+  Serial.println("Calibrating MQ137 + MQ135... keep air clean");
 
   unsigned long calibrationTime = 30000; // 10秒，可以改成 15000 或 30000
   unsigned long startTime = millis();
 
-  long sum = 0;
+  long mq137Sum = 0;
+  long mq135Sum = 0;
   int count = 0;
 
   while (millis() - startTime < calibrationTime) {
-    int val = readMQ137Average();
-    sum += val;
+    mq137Sum += readMQ137Average();
+    mq135Sum += readMQ135Average();
     count++;
 
     Serial.print(".");
@@ -60,12 +85,15 @@ void calibrateBaseline() {
   }
 
   if (count > 0) {
-    baseline = sum / count;
+    baseline = mq137Sum / count;
+    mq135Baseline = mq135Sum / count;
   }
 
   Serial.println();
-  Serial.print("Baseline = ");
+  Serial.print("MQ137 Baseline = ");
   Serial.println(baseline);
+  Serial.print("MQ135 Baseline = ");
+  Serial.println(mq135Baseline);
 }
 
 void updateStatusFromMQ137() {
@@ -80,12 +108,26 @@ void updateStatusFromMQ137() {
   }
 }
 
+void updateStatusFromMQ135() {
+  if (currentMQ135ChangePercent < 10) {
+    currentMQ135Status = "Normal";
+  } else if (currentMQ135ChangePercent < 30) {
+    currentMQ135Status = "Slight Change";
+  } else if (currentMQ135ChangePercent < 80) {
+    currentMQ135Status = "Medium Air Change";
+  } else {
+    currentMQ135Status = "Strong Air Change!";
+  }
+}
+
 void initSensors() {
   analogReadResolution(12);
+  analogSetPinAttenuation(MQ137_PIN, ADC_11db);
+  analogSetPinAttenuation(MQ135_PIN, ADC_11db);
 
   Wire.begin(AHT_SDA, AHT_SCL);
 
-  Serial.println("MQ137 + camera presence + AHT10 + Web Dashboard start...");
+  Serial.println("MQ137 + MQ135 + camera presence + AHT10 + Web Dashboard start...");
 
   if (!aht.begin()) {
     Serial.println("AHT10 not found!");
@@ -163,6 +205,13 @@ void updateSensors() {
 
   currentMQ137Raw = readMQ137Average();
   currentVoltage = currentMQ137Raw * (3.3 / 4095.0);
+  int mq135RawSample = readMQ135Average();
+  if (currentMQ135Raw == 0) {
+    currentMQ135Raw = mq135RawSample;
+  } else if (abs(mq135RawSample - currentMQ135Raw) > MQ135_RAW_DEADBAND) {
+    currentMQ135Raw = round((MQ135_FILTER_ALPHA * mq135RawSample) + ((1.0 - MQ135_FILTER_ALPHA) * currentMQ135Raw));
+  }
+  currentMQ135Voltage = currentMQ135Raw * (3.3 / 4095.0);
 
   if (baseline > 0) {
     currentChangePercent = ((float)(currentMQ137Raw - baseline) / baseline) * 100;
@@ -170,8 +219,15 @@ void updateSensors() {
     currentChangePercent = 0;
   }
 
+  if (mq135Baseline > 0) {
+    currentMQ135ChangePercent = ((float)(currentMQ135Raw - mq135Baseline) / mq135Baseline) * 100;
+  } else {
+    currentMQ135ChangePercent = 0;
+  }
+
   updateStatusFromMQ137();
-  updateStatusLedFromAmmonia(currentChangePercent);
+  updateStatusFromMQ135();
+  updateStatusLedFromAmmonia(max(currentChangePercent, currentMQ135ChangePercent));
 }
 
 void printSensorStatus() {
@@ -181,6 +237,8 @@ void printSensorStatus() {
   Serial.print(currentHum, 2);
   Serial.print(" % | MQ137: ");
   Serial.print(currentMQ137Raw);
+  Serial.print(" | MQ135: ");
+  Serial.print(currentMQ135Raw);
   Serial.print(" | Camera: ");
   Serial.print(currentPresenceState ? "present" : "empty");
   Serial.print(" | Camera change: ");
@@ -201,6 +259,8 @@ void printSensorStatus() {
   }
   Serial.print(" | Status: ");
   Serial.print(currentStatus);
+  Serial.print(" | MQ135 Status: ");
+  Serial.print(currentMQ135Status);
 
   if (recording) {
     Serial.print(" | Delta Temp: ");
@@ -239,6 +299,14 @@ void printCSVIfRecording() {
   csvLine += String(currentChangePercent, 1);
   csvLine += ",";
   csvLine += currentStatus;
+  csvLine += ",";
+  csvLine += String(currentMQ135Raw);
+  csvLine += ",";
+  csvLine += String(currentMQ135Voltage, 3);
+  csvLine += ",";
+  csvLine += String(currentMQ135ChangePercent, 1);
+  csvLine += ",";
+  csvLine += currentMQ135Status;
   csvLine += ",";
   csvLine += String(currentTempC, 2);
   csvLine += ",";

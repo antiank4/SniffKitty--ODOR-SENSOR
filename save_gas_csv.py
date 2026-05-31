@@ -5,7 +5,7 @@ import os
 
 PORT = "COM5"
 BAUD = 115200
-CSV_FILE = "mq137_data.csv"
+CSV_FILE = "gas_data.csv"
 
 ser = serial.Serial(PORT, BAUD, timeout=1)
 time.sleep(2)
@@ -24,9 +24,13 @@ with open(CSV_FILE, "a", newline="", encoding="utf-8") as f:
             "recording",
             "present",
             "mq137_raw",
-            "voltage",
+            "mq137_voltage",
             "ammonia_change_percent",
-            "status",
+            "ammonia_status",
+            "mq135_raw",
+            "mq135_voltage",
+            "air_change_percent",
+            "air_status",
             "temp_C",
             "hum_percent",
             "delta_temp",
@@ -48,7 +52,7 @@ with open(CSV_FILE, "a", newline="", encoding="utf-8") as f:
 
             parts = line.split(",")
 
-            if len(parts) == 12:
+            if len(parts) == 17:
                 writer.writerow(parts[1:])
                 f.flush()
                 print("Saved:", parts[1:])

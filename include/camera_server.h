@@ -10,5 +10,10 @@ bool updateCameraPresence();
 extern bool cameraBaselineReady;
 extern bool currentCameraPresent;
 extern float currentCameraChangePercent;
+extern bool currentCameraBoxValid;
+extern float currentCameraBoxXPercent;
+extern float currentCameraBoxYPercent;
+extern float currentCameraBoxWPercent;
+extern float currentCameraBoxHPercent;
 
 #endif

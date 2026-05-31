@@ -16,15 +16,24 @@ const char* password = "***REMOVED***";
 bool cameraBaselineReady = false;
 bool currentCameraPresent = false;
 float currentCameraChangePercent = 0;
+bool currentCameraBoxValid = false;
+float currentCameraBoxXPercent = 0;
+float currentCameraBoxYPercent = 0;
+float currentCameraBoxWPercent = 0;
+float currentCameraBoxHPercent = 0;
 
 static uint8_t* cameraBaselineFrame = NULL;
 static size_t cameraBaselineLength = 0;
 static float cameraBaselineMean = 0;
+static int cameraFrameWidth = 0;
+static int cameraFrameHeight = 0;
 
 static bool captureGrayscaleSnapshot(
   uint8_t** grayFrame,
   size_t* grayLength,
   float* grayMean,
+  int* frameWidth,
+  int* frameHeight,
   const char* label,
   bool showCaptureBlink
 ) {
@@ -49,6 +58,8 @@ static bool captureGrayscaleSnapshot(
   }
 
   size_t pixelCount = fb->width * fb->height;
+  int width = fb->width;
+  int height = fb->height;
   uint8_t* rgbFrame = (uint8_t*)malloc(pixelCount * 3);
 
   if (rgbFrame == NULL) {
@@ -95,6 +106,8 @@ static bool captureGrayscaleSnapshot(
   *grayFrame = gray;
   *grayLength = pixelCount;
   *grayMean = pixelCount > 0 ? (float)sum / pixelCount : 0;
+  *frameWidth = width;
+  *frameHeight = height;
 
   return true;
 }
@@ -170,8 +183,10 @@ void captureCameraBaselineAfterDelay() {
   uint8_t* grayFrame = NULL;
   size_t grayLength = 0;
   float grayMean = 0;
+  int grayWidth = 0;
+  int grayHeight = 0;
 
-  if (!captureGrayscaleSnapshot(&grayFrame, &grayLength, &grayMean, "Camera baseline", false)) {
+  if (!captureGrayscaleSnapshot(&grayFrame, &grayLength, &grayMean, &grayWidth, &grayHeight, "Camera baseline", false)) {
     Serial.println("Camera baseline capture failed.");
     cameraBaselineReady = false;
     return;
@@ -185,9 +200,12 @@ void captureCameraBaselineAfterDelay() {
   cameraBaselineFrame = grayFrame;
   cameraBaselineLength = grayLength;
   cameraBaselineMean = grayMean;
+  cameraFrameWidth = grayWidth;
+  cameraFrameHeight = grayHeight;
 
   currentCameraChangePercent = 0;
   currentCameraPresent = false;
+  currentCameraBoxValid = false;
   cameraBaselineReady = true;
 
   Serial.print("Camera baseline captured. Bytes: ");
@@ -202,6 +220,7 @@ bool updateCameraPresence() {
   if (!cameraBaselineReady || cameraBaselineFrame == NULL) {
     currentCameraPresent = false;
     currentCameraChangePercent = 0;
+    currentCameraBoxValid = false;
     return currentCameraPresent;
   }
 
@@ -214,13 +233,15 @@ bool updateCameraPresence() {
   uint8_t* grayFrame = NULL;
   size_t grayLength = 0;
   float grayMean = 0;
+  int grayWidth = 0;
+  int grayHeight = 0;
 
-  if (!captureGrayscaleSnapshot(&grayFrame, &grayLength, &grayMean, "Camera presence", true)) {
+  if (!captureGrayscaleSnapshot(&grayFrame, &grayLength, &grayMean, &grayWidth, &grayHeight, "Camera presence", true)) {
     Serial.println("Camera presence capture failed.");
     return currentCameraPresent;
   }
 
-  if (grayLength != cameraBaselineLength) {
+  if (grayLength != cameraBaselineLength || grayWidth != cameraFrameWidth || grayHeight != cameraFrameHeight) {
     Serial.println("Camera frame size changed; presence check skipped.");
     free(grayFrame);
     return currentCameraPresent;
@@ -230,6 +251,10 @@ bool updateCameraPresence() {
   int rawChangedSamples = 0;
   int adjustedChangedSamples = 0;
   int totalSamples = 0;
+  int minX = cameraFrameWidth;
+  int minY = cameraFrameHeight;
+  int maxX = -1;
+  int maxY = -1;
 
   for (size_t i = 0; i < cameraBaselineLength; i += CAMERA_COMPARE_SAMPLE_STEP) {
     int rawDiff = abs((int)grayFrame[i] - (int)cameraBaselineFrame[i]);
@@ -241,6 +266,13 @@ bool updateCameraPresence() {
     int adjustedDiff = abs((int)(adjustedCurrent - (float)cameraBaselineFrame[i]));
     if (adjustedDiff >= CAMERA_PIXEL_DIFF_THRESHOLD) {
       adjustedChangedSamples++;
+
+      int x = i % cameraFrameWidth;
+      int y = i / cameraFrameWidth;
+      minX = min(minX, x);
+      minY = min(minY, y);
+      maxX = max(maxX, x);
+      maxY = max(maxY, y);
     }
 
     totalSamples++;
@@ -257,6 +289,20 @@ bool updateCameraPresence() {
   float adjustedChangePercent = totalSamples > 0
     ? ((float)adjustedChangedSamples / totalSamples) * 100.0
     : 0;
+
+  currentCameraBoxValid = adjustedChangePercent >= 1.0 && maxX >= minX && maxY >= minY;
+
+  if (currentCameraBoxValid) {
+    currentCameraBoxXPercent = ((float)minX / cameraFrameWidth) * 100.0;
+    currentCameraBoxYPercent = ((float)minY / cameraFrameHeight) * 100.0;
+    currentCameraBoxWPercent = ((float)(maxX - minX + 1) / cameraFrameWidth) * 100.0;
+    currentCameraBoxHPercent = ((float)(maxY - minY + 1) / cameraFrameHeight) * 100.0;
+  } else {
+    currentCameraBoxXPercent = 0;
+    currentCameraBoxYPercent = 0;
+    currentCameraBoxWPercent = 0;
+    currentCameraBoxHPercent = 0;
+  }
 
   bool rawPresent = currentCameraPresent
     ? adjustedChangePercent > CAMERA_EMPTY_CHANGE_PERCENT
@@ -301,10 +347,19 @@ static esp_err_t data_handler(httpd_req_t *req) {
   json += "\"present\":" + String(currentPresenceState ? 1 : 0) + ",";
   json += "\"camera_baseline_ready\":" + String(cameraBaselineReady ? 1 : 0) + ",";
   json += "\"camera_change_percent\":" + String(currentCameraChangePercent, 1) + ",";
+  json += "\"camera_box_valid\":" + String(currentCameraBoxValid ? 1 : 0) + ",";
+  json += "\"camera_box_x\":" + String(currentCameraBoxXPercent, 1) + ",";
+  json += "\"camera_box_y\":" + String(currentCameraBoxYPercent, 1) + ",";
+  json += "\"camera_box_w\":" + String(currentCameraBoxWPercent, 1) + ",";
+  json += "\"camera_box_h\":" + String(currentCameraBoxHPercent, 1) + ",";
   json += "\"mq137_raw\":" + String(currentMQ137Raw) + ",";
   json += "\"voltage\":" + String(currentVoltage, 3) + ",";
   json += "\"ammonia_change_percent\":" + String(currentChangePercent, 1) + ",";
   json += "\"status\":\"" + currentStatus + "\",";
+  json += "\"mq135_raw\":" + String(currentMQ135Raw) + ",";
+  json += "\"mq135_voltage\":" + String(currentMQ135Voltage, 3) + ",";
+  json += "\"air_change_percent\":" + String(currentMQ135ChangePercent, 1) + ",";
+  json += "\"air_status\":\"" + currentMQ135Status + "\",";
   json += "\"temp_C\":" + String(currentTempC, 2) + ",";
   json += "\"hum_percent\":" + String(currentHum, 2) + ",";
   json += "\"delta_temp\":" + String(currentDeltaTemp, 2) + ",";
