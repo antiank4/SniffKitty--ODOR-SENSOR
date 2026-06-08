@@ -20,6 +20,7 @@ with open(CSV_FILE, "a", newline="", encoding="utf-8") as f:
 
     if not file_exists:
         writer.writerow([
+            "timestamp",
             "time_ms",
             "recording",
             "present",
@@ -52,7 +53,7 @@ with open(CSV_FILE, "a", newline="", encoding="utf-8") as f:
 
             parts = line.split(",")
 
-            if len(parts) == 17:
+            if len(parts) == 18:
                 writer.writerow(parts[1:])
                 f.flush()
                 print("Saved:", parts[1:])

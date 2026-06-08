@@ -9,6 +9,7 @@
 #include "dashboard_html.h"
 #include "camera_server.h"
 #include "status_led.h"
+#include "storage.h"
 
 const char* ssid = "eduroam";
 const char* password = "***REMOVED***";
@@ -210,6 +211,45 @@ void captureCameraBaselineAfterDelay() {
 
   Serial.print("Camera baseline captured. Bytes: ");
   Serial.println(cameraBaselineLength);
+}
+
+String capturePresencePhotoToSD() {
+  camera_fb_t* fb = NULL;
+
+  for (int attempt = 0; attempt < 5 && fb == NULL; attempt++) {
+    fb = esp_camera_fb_get();
+
+    if (fb == NULL) {
+      delay(80);
+    }
+  }
+
+  if (!fb) {
+    Serial.println("Presence photo capture failed: camera frame unavailable");
+    return "";
+  }
+
+  uint8_t* jpgBuf = fb->buf;
+  size_t jpgLen = fb->len;
+  bool converted = false;
+
+  if (fb->format != PIXFORMAT_JPEG) {
+    if (!frame2jpg(fb, 85, &jpgBuf, &jpgLen)) {
+      Serial.println("Presence photo capture failed: JPEG conversion failed");
+      esp_camera_fb_return(fb);
+      return "";
+    }
+    converted = true;
+  }
+
+  String path = saveJpegPhotoToSD(jpgBuf, jpgLen);
+
+  if (converted) {
+    free(jpgBuf);
+  }
+
+  esp_camera_fb_return(fb);
+  return path;
 }
 
 bool updateCameraPresence() {
@@ -522,6 +562,8 @@ void connectWiFi() {
   Serial.print("WiFi connected. Open dashboard: http://");
   Serial.print(WiFi.localIP());
   Serial.println(":8000");
+
+  syncClockFromNTP();
 
   Serial.print("Camera stream: http://");
   Serial.print(WiFi.localIP());

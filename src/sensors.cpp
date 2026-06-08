@@ -143,6 +143,14 @@ void updateSensors() {
   currentPresenceState = updateCameraPresence();
 
   if (currentPresenceState) {
+    if (!previousPresenceState) {
+      String photoPath = capturePresencePhotoToSD();
+      if (photoPath.length() > 0) {
+        Serial.print("Presence photo linked to visit: ");
+        Serial.println(photoPath);
+      }
+    }
+
     if (postRecording) {
       postRecording = false;
       Serial.println("Camera present: cancel post-empty recording");
@@ -286,6 +294,8 @@ void printCSVIfRecording() {
   }
 
   String csvLine = "CSV,";
+  csvLine += getTimestampString();
+  csvLine += ",";
   csvLine += String(millis());
   csvLine += ",";
   csvLine += String(recording ? 1 : 0);

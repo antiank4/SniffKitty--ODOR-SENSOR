@@ -5,6 +5,7 @@ void initCamera();
 void connectWiFi();
 void startCameraServer();
 void captureCameraBaselineAfterDelay();
+String capturePresencePhotoToSD();
 bool updateCameraPresence();
 
 extern bool cameraBaselineReady;

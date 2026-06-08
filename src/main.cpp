@@ -26,7 +26,7 @@ void setup() {
   calibrateBaseline();
 
   Serial.println("Waiting for camera presence...");
-  Serial.println("CSV,time_ms,recording,present,mq137_raw,mq137_voltage,ammonia_change_percent,ammonia_status,mq135_raw,mq135_voltage,air_change_percent,air_status,temp_C,hum_percent,delta_temp,delta_hum");
+  Serial.println("CSV,timestamp,time_ms,recording,present,mq137_raw,mq137_voltage,ammonia_change_percent,ammonia_status,mq135_raw,mq135_voltage,air_change_percent,air_status,temp_C,hum_percent,delta_temp,delta_hum");
 }
 
 void loop() {
