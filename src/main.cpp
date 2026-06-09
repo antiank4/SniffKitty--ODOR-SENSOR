@@ -30,6 +30,8 @@ void setup() {
 }
 
 void loop() {
+  updateStorage();
+
   updateSensors();
 
   printSensorStatus();

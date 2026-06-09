@@ -216,11 +216,11 @@ void captureCameraBaselineAfterDelay() {
 String capturePresencePhotoToSD() {
   camera_fb_t* fb = NULL;
 
-  for (int attempt = 0; attempt < 5 && fb == NULL; attempt++) {
+  for (int attempt = 0; attempt < 2 && fb == NULL; attempt++) {
     fb = esp_camera_fb_get();
 
     if (fb == NULL) {
-      delay(80);
+      delay(30);
     }
   }
 

@@ -6,6 +6,7 @@
 extern bool sdReady;
 
 void initStorage();
+void updateStorage();
 void syncClockFromNTP();
 String getTimestampString();
 String getTimestampFilename();

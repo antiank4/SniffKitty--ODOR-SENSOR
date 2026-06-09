@@ -34,6 +34,7 @@ float currentMQ135Voltage = 0;
 float currentMQ135ChangePercent = 0;
 String currentMQ135Status = "Waiting";
 bool currentPresenceState = false;
+static bool pendingPresencePhoto = false;
 
 static int readGasAverage(int pin, int sampleCount) {
   long sum = 0;
@@ -144,11 +145,7 @@ void updateSensors() {
 
   if (currentPresenceState) {
     if (!previousPresenceState) {
-      String photoPath = capturePresencePhotoToSD();
-      if (photoPath.length() > 0) {
-        Serial.print("Presence photo linked to visit: ");
-        Serial.println(photoPath);
-      }
+      pendingPresencePhoto = true;
     }
 
     if (postRecording) {
@@ -236,6 +233,17 @@ void updateSensors() {
   updateStatusFromMQ137();
   updateStatusFromMQ135();
   updateStatusLedFromAmmonia(max(currentChangePercent, currentMQ135ChangePercent));
+
+  if (pendingPresencePhoto && SAVE_PRESENCE_PHOTO_ENABLED) {
+    pendingPresencePhoto = false;
+    String photoPath = capturePresencePhotoToSD();
+    if (photoPath.length() > 0) {
+      Serial.print("Presence photo linked to visit: ");
+      Serial.println(photoPath);
+    }
+  } else if (pendingPresencePhoto) {
+    pendingPresencePhoto = false;
+  }
 }
 
 void printSensorStatus() {
