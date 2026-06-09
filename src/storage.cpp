@@ -3,6 +3,7 @@
 
 #include <SD.h>
 #include <SPI.h>
+#include <WiFi.h>
 #include <time.h>
 
 bool sdReady = false;
@@ -11,6 +12,8 @@ static SPIClass sdSPI(FSPI);
 static bool sdSpiStarted = false;
 static unsigned long lastSdRetryTime = 0;
 static bool sdRetryMessagePrinted = false;
+static bool clockSynced = false;
+static unsigned long lastClockSyncAttemptTime = 0;
 
 static void markSdOffline(const char* reason) {
   if (sdReady) {
@@ -78,23 +81,34 @@ static bool beginStorage(bool verbose) {
 }
 
 static bool getLocalTimeInfo(struct tm* timeinfo) {
-  return getLocalTime(timeinfo, 50);
+  if (!getLocalTime(timeinfo, 100)) {
+    return false;
+  }
+
+  return (timeinfo->tm_year + 1900) >= 2024;
 }
 
 void syncClockFromNTP() {
+  lastClockSyncAttemptTime = millis();
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Clock sync skipped: WiFi not connected.");
+    return;
+  }
+
   Serial.println("Syncing clock from NTP...");
-  configTzTime("PST8PDT,M3.2.0,M11.1.0", "pool.ntp.org", "time.nist.gov", "time.google.com");
+  configTzTime("PST8PDT,M3.2.0,M11.1.0", "time.google.com", "pool.ntp.org", "time.cloudflare.com");
 
   struct tm timeinfo;
   unsigned long startTime = millis();
-  const unsigned long syncTimeoutMs = 8000;
 
-  while (millis() - startTime < syncTimeoutMs) {
+  while (millis() - startTime < CLOCK_SYNC_TIMEOUT_MS) {
     if (getLocalTimeInfo(&timeinfo)) {
       char buffer[24];
       strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &timeinfo);
       Serial.print("Clock synced: ");
       Serial.println(buffer);
+      clockSynced = true;
       return;
     }
 
@@ -134,6 +148,10 @@ void initStorage() {
 }
 
 void updateStorage() {
+  if (!clockSynced && WiFi.status() == WL_CONNECTED && millis() - lastClockSyncAttemptTime >= CLOCK_RETRY_INTERVAL_MS) {
+    syncClockFromNTP();
+  }
+
   if (sdReady) {
     return;
   }

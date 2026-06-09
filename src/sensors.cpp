@@ -3,6 +3,7 @@
 #include "config.h"
 #include "storage.h"
 #include "status_led.h"
+#include <math.h>
 #include <Wire.h>
 
 int baseline = 0;
@@ -210,22 +211,36 @@ void updateSensors() {
 
   currentMQ137Raw = readMQ137Average();
   currentVoltage = currentMQ137Raw * (3.3 / 4095.0);
+  bool mq135PostCloseBoost = false;
+  if (postRecording && postRecordingEndTime > millis()) {
+    unsigned long postCloseElapsedMs = PRESENCE_RECORD_AFTER_EMPTY_MS - (postRecordingEndTime - millis());
+    mq135PostCloseBoost = postCloseElapsedMs < MQ135_POST_CLOSE_BOOST_MS;
+  }
+  bool mq135ActiveMode = currentPresenceState || (recording && !postRecording) || mq135PostCloseBoost;
+  float mq135FilterAlpha = mq135ActiveMode ? MQ135_ACTIVE_FILTER_ALPHA : MQ135_IDLE_FILTER_ALPHA;
+  int mq135RawDeadband = mq135ActiveMode ? MQ135_ACTIVE_RAW_DEADBAND : MQ135_IDLE_RAW_DEADBAND;
+  float mq135ChangeMultiplier = mq135ActiveMode ? MQ135_ACTIVE_CHANGE_MULTIPLIER : MQ135_IDLE_CHANGE_MULTIPLIER;
+
   int mq135RawSample = readMQ135Average();
   if (currentMQ135Raw == 0) {
     currentMQ135Raw = mq135RawSample;
-  } else if (abs(mq135RawSample - currentMQ135Raw) > MQ135_RAW_DEADBAND) {
-    currentMQ135Raw = round((MQ135_FILTER_ALPHA * mq135RawSample) + ((1.0 - MQ135_FILTER_ALPHA) * currentMQ135Raw));
+  } else if (abs(mq135RawSample - currentMQ135Raw) > mq135RawDeadband) {
+    currentMQ135Raw = round((mq135FilterAlpha * mq135RawSample) + ((1.0 - mq135FilterAlpha) * currentMQ135Raw));
   }
   currentMQ135Voltage = currentMQ135Raw * (3.3 / 4095.0);
 
   if (baseline > 0) {
-    currentChangePercent = ((float)(currentMQ137Raw - baseline) / baseline) * 100;
+    currentChangePercent = ((float)(currentMQ137Raw - baseline) / baseline) * 100 * MQ137_CHANGE_MULTIPLIER;
   } else {
     currentChangePercent = 0;
   }
 
   if (mq135Baseline > 0) {
-    currentMQ135ChangePercent = ((float)(currentMQ135Raw - mq135Baseline) / mq135Baseline) * 100;
+    float mq135DeltaPercent = ((float)(currentMQ135Raw - mq135Baseline) / mq135Baseline) * 100;
+    currentMQ135ChangePercent = fabs(mq135DeltaPercent) * mq135ChangeMultiplier;
+    if (!mq135ActiveMode && currentMQ135ChangePercent < MQ135_IDLE_NOISE_FLOOR_PERCENT) {
+      currentMQ135ChangePercent = 0;
+    }
   } else {
     currentMQ135ChangePercent = 0;
   }
@@ -253,8 +268,14 @@ void printSensorStatus() {
   Serial.print(currentHum, 2);
   Serial.print(" % | MQ137: ");
   Serial.print(currentMQ137Raw);
+  Serial.print(" (");
+  Serial.print(currentChangePercent, 1);
+  Serial.print("%)");
   Serial.print(" | MQ135: ");
   Serial.print(currentMQ135Raw);
+  Serial.print(" (");
+  Serial.print(currentMQ135ChangePercent, 1);
+  Serial.print("%)");
   Serial.print(" | Camera: ");
   Serial.print(currentPresenceState ? "present" : "empty");
   Serial.print(" | Camera change: ");

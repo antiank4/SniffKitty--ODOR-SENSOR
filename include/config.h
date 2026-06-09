@@ -19,6 +19,8 @@ const uint32_t SD_SPI_FREQ = 400000;
 const char* const SD_LOG_PATH = "/gas_data.csv";
 const bool SAVE_PRESENCE_PHOTO_ENABLED = true;
 const unsigned long SD_RETRY_INTERVAL_MS = 5000;
+const unsigned long CLOCK_SYNC_TIMEOUT_MS = 20000;
+const unsigned long CLOCK_RETRY_INTERVAL_MS = 30000;
 
 const bool STATUS_LED_ENABLED = true;
 const int STATUS_LED_PIN = 48;
@@ -27,11 +29,18 @@ const float LED_SLIGHT_CHANGE_PERCENT = 10.0;
 const float LED_MEDIUM_CHANGE_PERCENT = 30.0;
 const float LED_STRONG_CHANGE_PERCENT = 80.0;
 
+const float MQ137_CHANGE_MULTIPLIER = 2.0;
 const int SAMPLE_COUNT = 2;
 const int DELAY_BETWEEN_SAMPLES = 2;
 const int MQ135_SAMPLE_COUNT = 12;
-const float MQ135_FILTER_ALPHA = 0.18;
-const int MQ135_RAW_DEADBAND = 3;
+const float MQ135_IDLE_FILTER_ALPHA = 0.18;
+const float MQ135_ACTIVE_FILTER_ALPHA = 0.70;
+const int MQ135_IDLE_RAW_DEADBAND = 8;
+const int MQ135_ACTIVE_RAW_DEADBAND = 1;
+const float MQ135_IDLE_CHANGE_MULTIPLIER = 1.0;
+const float MQ135_ACTIVE_CHANGE_MULTIPLIER = 1.5;
+const float MQ135_IDLE_NOISE_FLOOR_PERCENT = 5.0;
+const unsigned long MQ135_POST_CLOSE_BOOST_MS = 3000;
 
 const unsigned long PRESENCE_IGNORE_AFTER_TRIGGER = 5000;
 const unsigned long PRESENCE_RECORD_AFTER_EMPTY_MS = 20000;
