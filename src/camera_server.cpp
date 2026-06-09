@@ -540,6 +540,18 @@ void startCameraServer() {
 }
 
 void connectWiFi() {
+  WiFi.mode(WIFI_AP_STA);
+
+  if (WiFi.softAP(DEMO_AP_SSID, DEMO_AP_PASSWORD)) {
+    Serial.print("Demo WiFi ready: ");
+    Serial.println(DEMO_AP_SSID);
+    Serial.print("Demo dashboard: http://");
+    Serial.print(WiFi.softAPIP());
+    Serial.println(":8000");
+  } else {
+    Serial.println("Demo WiFi failed to start.");
+  }
+
   WiFi.begin(ssid, password);
 
   Serial.print("Connecting WiFi");
@@ -554,7 +566,7 @@ void connectWiFi() {
 
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println();
-    Serial.println("WiFi not connected. Continuing in offline SD logging mode.");
+    Serial.println("WiFi not connected. Demo WiFi dashboard is still available.");
     return;
   }
 
@@ -568,4 +580,7 @@ void connectWiFi() {
   Serial.print("Camera stream: http://");
   Serial.print(WiFi.localIP());
   Serial.println(":8001/stream");
+  Serial.print("Demo WiFi also available: http://");
+  Serial.print(WiFi.softAPIP());
+  Serial.println(":8000");
 }

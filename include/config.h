@@ -6,6 +6,9 @@
 extern const char* ssid;
 extern const char* password;
 
+const char* const DEMO_AP_SSID = "SniffKitty-Demo";
+const char* const DEMO_AP_PASSWORD = "12345678";
+
 const int MQ137_PIN = 1;
 const int MQ135_PIN = 2;
 const int AHT_SDA = 14;
