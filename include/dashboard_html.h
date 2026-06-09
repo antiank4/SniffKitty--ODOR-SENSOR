@@ -51,19 +51,51 @@ const char DASHBOARD_HTML[] = R"rawliteral(
     .badge-good { color: #15803d; font-weight: 800; }
     .badge-warn { color: #dc2626; font-weight: 800; }
     .side-card { margin-bottom: 18px; }
-    .alert { border-left: 6px solid #ef4444; background: #fff7f7; }
+    .alert { border-left: 4px solid rgba(22,163,74,0.45); background: rgba(240,253,244,0.78); transition: border-color 320ms ease, border-left-width 320ms ease, background 320ms ease, box-shadow 320ms ease; }
+    .alert.summary-normal { border-left-width: 4px; border-left-color: rgba(22,163,74,0.36); background: rgba(240,253,244,0.58); box-shadow: 0 10px 24px rgba(22,163,74,0.04); }
+    .alert.summary-slight { border-left-width: 6px; border-left-color: rgba(234,179,8,0.78); background: rgba(254,252,232,0.78); box-shadow: 0 12px 28px rgba(234,179,8,0.08); }
+    .alert.summary-medium { border-left-width: 7px; border-left-color: rgba(249,115,22,0.9); background: rgba(255,247,237,0.84); box-shadow: 0 13px 30px rgba(249,115,22,0.12); }
+    .alert.summary-strong { border-left-width: 9px; border-left-color: #ef4444; background: rgba(255,241,242,0.9); box-shadow: 0 16px 38px rgba(239,68,68,0.2); }
+    .summary-normal .next-title { color: #166534; }
+    .summary-normal p { color: #1f2937; }
+    .summary-slight .next-title { color: #a16207; }
+    .summary-slight p { color: #713f12; }
+    .summary-medium .next-title { color: #c2410c; }
+    .summary-medium p { color: #7c2d12; }
+    .summary-strong .next-title { color: #b91c1c; }
+    .summary-strong p { color: #7f1d1d; font-weight: 700; }
+    .dual-summary { display: grid; grid-template-columns: 1fr; gap: 12px; }
     .next-title { font-size: 20px; font-weight: 900; margin-bottom: 12px; }
     li { margin-bottom: 10px; line-height: 1.4; }
-    .blue-btn { background: #2563eb; width: 100%; margin-top: 12px; }
+    .blue-btn { background: #2563eb; width: 100%; margin-top: 12px; border-radius: 999px; padding: 13px 22px; font-weight: 900; box-shadow: 0 12px 26px rgba(37,99,235,0.24); transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease; }
+    a.blue-btn { display: block; box-sizing: border-box; text-align: center; color: white; text-decoration: none; }
+    .blue-btn:hover { background: #1d4ed8; transform: translateY(-1px); box-shadow: 0 16px 30px rgba(37,99,235,0.3); }
+    .urgent-steps { display: none; }
+    .urgent-steps.show { display: block; animation: cardReveal 900ms cubic-bezier(0.16, 1, 0.3, 1); }
     .small-guide { color: #555; line-height: 1.5; font-size: 14px; }
+    .read-list { display: grid; gap: 10px; }
+    .read-row { display: grid; grid-template-columns: 18px 1fr; gap: 9px; align-items: start; font-size: 13px; color: #4b5563; }
+    .read-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; background: #16a34a; box-shadow: 0 0 0 4px rgba(22,163,74,0.12); }
+    .read-row b { color: #111827; }
+    .read-row.slight .read-dot { background: #eab308; box-shadow: 0 0 0 4px rgba(234,179,8,0.16); }
+    .read-row.medium .read-dot { background: #f97316; box-shadow: 0 0 0 4px rgba(249,115,22,0.18); }
+    .read-row.strong .read-dot { background: #ef4444; box-shadow: 0 0 0 4px rgba(239,68,68,0.2); }
     .event-status { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-bottom: 12px; }
     .event-pill { border-radius: 999px; background: #111827; color: white; padding: 6px 10px; font-size: 12px; font-weight: 800; }
     .event-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; margin-top: 10px; background: rgba(251,251,251,0.94); }
+    .event-card.event-normal { border-color: rgba(22,163,74,0.18); }
+    .event-card.event-caution { border-color: rgba(249,115,22,0.75); border-left: 6px solid rgba(249,115,22,0.9); background: rgba(255,247,237,0.96); }
+    .event-card.event-warning { border-color: rgba(239,68,68,0.9); border-left: 8px solid #ef4444; background: rgba(255,241,242,0.98); box-shadow: 0 16px 34px rgba(239,68,68,0.16); }
     .event-card.reveal { animation: cardReveal 1100ms cubic-bezier(0.16, 1, 0.3, 1), pulseGlow 1500ms ease-out; }
     .event-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
     .event-name { font-weight: 900; font-size: 15px; }
     .event-time { color: #6b7280; font-size: 11px; }
     .event-score { font-size: 22px; font-weight: 900; margin: 8px 0; }
+    .event-caution .event-score { color: #c2410c; }
+    .event-warning .event-score { color: #b91c1c; font-size: 24px; letter-spacing: 0; }
+    .event-action { display: none; margin: 8px 0 10px; padding: 8px 10px; border-radius: 8px; font-size: 12px; font-weight: 800; }
+    .event-caution .event-action { display: block; color: #7c2d12; background: rgba(255,237,213,0.95); }
+    .event-warning .event-action { display: block; color: #7f1d1d; background: rgba(254,226,226,0.95); border: 1px solid rgba(239,68,68,0.28); }
     .event-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; color: #4b5563; }
     .event-grid b { display: block; color: #111827; font-size: 15px; margin-top: 2px; }
     .event-spark { width: 100%; height: 52px; margin-top: 10px; }
@@ -152,9 +184,15 @@ const char DASHBOARD_HTML[] = R"rawliteral(
       </div>
 
       <div>
-        <div class="card side-card alert">
-          <div class="next-title">Health Summary</div>
-          <p id="summaryText">Waiting for sensor data. Recent ammonia, entry, and stay duration are still within normal range.</p>
+        <div class="dual-summary side-card">
+          <div class="card alert summary-normal" id="mq137SummaryCard">
+            <div class="next-title" id="mq137SummaryTitle">MQ137 Ammonia Summary</div>
+            <p id="mq137SummaryText">Ammonia signal is within normal range.</p>
+          </div>
+          <div class="card alert summary-normal" id="mq135SummaryCard">
+            <div class="next-title" id="mq135SummaryTitle">MQ135 Sulfide Summary</div>
+            <p id="mq135SummaryText">Sulfide signal is within normal range.</p>
+          </div>
         </div>
 
         <div class="card side-card">
@@ -166,7 +204,7 @@ const char DASHBOARD_HTML[] = R"rawliteral(
           <div id="visitEvents"></div>
         </div>
 
-        <div class="card side-card">
+        <div class="card side-card urgent-steps" id="suggestedNextSteps">
           <div class="next-title">Suggested Next Steps</div>
           <ul>
             <li>Check if the litter box needs cleaning</li>
@@ -174,7 +212,7 @@ const char DASHBOARD_HTML[] = R"rawliteral(
             <li>Keep watching stool shape and color patterns</li>
             <li>If deviation persists, consult a veterinarian</li>
           </ul>
-          <button class="blue-btn">Find Vet / Online Consultation</button>
+          <a class="blue-btn" href="https://www.google.com/maps/search/veterinarian+near+me" target="_blank" rel="noopener">Find 10 Nearby Vets</a>
         </div>
 
         <div class="card side-card">
@@ -189,7 +227,12 @@ const char DASHBOARD_HTML[] = R"rawliteral(
 
         <div class="card">
           <div class="next-title">How to Read This</div>
-          <div class="small-guide">😊 means the signal matches your cat's baseline or trained model. ❓ means the system detected a deviation and more context is needed.</div>
+          <div class="read-list">
+            <div class="read-row" id="readMq137"><span class="read-dot"></span><span><b>MQ137</b>: waiting for ammonia data.</span></div>
+            <div class="read-row" id="readMq135"><span class="read-dot"></span><span><b>MQ135</b>: waiting for sulfide data.</span></div>
+            <div class="read-row" id="readCamera"><span class="read-dot"></span><span><b>Camera</b>: waiting for baseline comparison.</span></div>
+            <div class="small-guide" id="readAdvice">Green is normal, yellow is a mild change, orange needs attention, and red is a warning.</div>
+          </div>
         </div>
       </div>
     </div>
@@ -205,8 +248,8 @@ const char DASHBOARD_HTML[] = R"rawliteral(
   let humHistory = [];
   let activeVisit = null;
   let visitEvents = [];
-  let visitSequence = 0;
   let lastPostRecording = 0;
+  let vetCardLatched = false;
 
   const photoInput = document.getElementById("catPhotoInput");
   photoInput.addEventListener("change", function() {
@@ -343,10 +386,106 @@ const char DASHBOARD_HTML[] = R"rawliteral(
     return "Strong";
   }
 
+  function signalLevelClass(percent) {
+    if (percent >= 80) return "strong";
+    if (percent >= 30) return "medium";
+    if (percent >= 10) return "slight";
+    return "";
+  }
+
+  function updateReadRow(id, levelClass, html) {
+    const row = document.getElementById(id);
+    if (!row) return;
+    row.className = "read-row" + (levelClass ? " " + levelClass : "");
+    row.querySelector("span:last-child").innerHTML = html;
+  }
+
+  function updateHowToRead(data) {
+    const ammonia = Math.max(0, Number(data.ammonia_change_percent));
+    const sulfide = Math.max(0, Number(data.air_change_percent));
+    const camera = Math.max(0, Number(data.camera_change_percent));
+    const present = Number(data.present) === 1;
+    const advice = document.getElementById("readAdvice");
+
+    updateReadRow(
+      "readMq137",
+      signalLevelClass(ammonia),
+      "<b>MQ137</b>: ammonia is " + ammoniaText(ammonia).toLowerCase() + " at +" + ammonia.toFixed(1) + "% from baseline."
+    );
+
+    updateReadRow(
+      "readMq135",
+      sulfide >= 10 ? "slight" : "",
+      "<b>MQ135</b>: sulfide signal is " + (sulfide >= 10 ? "changed" : "normal") + " at +" + sulfide.toFixed(1) + "% from baseline."
+    );
+
+    updateReadRow(
+      "readCamera",
+      present ? "medium" : "",
+      "<b>Camera</b>: litter box is " + (present ? "occupied/present" : "empty") + ", visual change " + camera.toFixed(1) + "%."
+    );
+
+    if (ammonia >= 80) {
+      advice.innerText = "Red warning: MQ137 ammonia is high. Check the litter box now and use the vet search if this repeats.";
+    } else if (ammonia >= 30) {
+      advice.innerText = "Orange attention: ammonia is elevated. Clean or inspect the litter box and watch the next visit.";
+    } else if (ammonia >= 10 && sulfide >= 10) {
+      advice.innerText = "Both gas sensors changed together. The vet search card appears so you can quickly find nearby help.";
+    } else if (ammonia >= 10 || sulfide >= 10) {
+      advice.innerText = "Yellow means a mild change from baseline. Keep watching for repeated patterns.";
+    } else {
+      advice.innerText = "Green means signals are close to baseline and the current pattern looks normal.";
+    }
+  }
+
+  function setSummaryCard(cardId, titleId, textId, levelClass, titleText, bodyText) {
+    const card = document.getElementById(cardId);
+    const title = document.getElementById(titleId);
+    const text = document.getElementById(textId);
+
+    if (!card || !title || !text) return;
+
+    card.className = "card alert " + levelClass;
+    title.innerText = titleText;
+    text.innerText = bodyText;
+  }
+
+  function updateMQ137Summary(percent) {
+    if (percent >= 80) {
+      setSummaryCard("mq137SummaryCard", "mq137SummaryTitle", "mq137SummaryText", "summary-strong", "Strong Ammonia Alert", "MQ137 is far above baseline. Check the litter box now and keep monitoring the next visit.");
+    } else if (percent >= 30) {
+      setSummaryCard("mq137SummaryCard", "mq137SummaryTitle", "mq137SummaryText", "summary-medium", "Elevated Ammonia Pattern", "MQ137 is clearly above baseline. Check litter condition and recent behavior.");
+    } else if (percent >= 10) {
+      setSummaryCard("mq137SummaryCard", "mq137SummaryTitle", "mq137SummaryText", "summary-slight", "Slight Ammonia Change", "MQ137 has a mild change. Pattern is still close to normal, but worth watching.");
+    } else {
+      setSummaryCard("mq137SummaryCard", "mq137SummaryTitle", "mq137SummaryText", "summary-normal", "MQ137 Ammonia Summary", "Ammonia signal is within normal range.");
+    }
+  }
+
+  function updateMQ135Summary(percent) {
+    if (percent >= 10) {
+      setSummaryCard("mq135SummaryCard", "mq135SummaryTitle", "mq135SummaryText", "summary-slight", "MQ135 Sulfide Change", "Sulfide signal has changed from baseline. Check whether the litter box needs attention.");
+    } else {
+      setSummaryCard("mq135SummaryCard", "mq135SummaryTitle", "mq135SummaryText", "summary-normal", "MQ135 Sulfide Summary", "Sulfide signal is within normal range.");
+    }
+  }
+
+  function updateSuggestedNextSteps(ammoniaPercent, sulfidePercent) {
+    const steps = document.getElementById("suggestedNextSteps");
+    if (!steps) return;
+
+    const mq137Red = ammoniaPercent >= 80;
+    const bothYellowOrHigher = ammoniaPercent >= 10 && sulfidePercent >= 10;
+    vetCardLatched = vetCardLatched || mq137Red || bothYellowOrHigher;
+
+    steps.className = vetCardLatched
+      ? "card side-card urgent-steps show"
+      : "card side-card urgent-steps";
+  }
+
   function beginVisit(data) {
-    visitSequence += 1;
     activeVisit = {
-      id: visitSequence,
+      id: null,
       start: Date.now(),
       exit: null,
       samples: [],
@@ -392,9 +531,30 @@ const char DASHBOARD_HTML[] = R"rawliteral(
   }
 
   function gradeVisit(event) {
-    if (event.ammoniaPeak >= 80 || event.airPeak >= 80) return "Strong signature";
-    if (event.ammoniaPeak >= 30 || event.airPeak >= 30) return "Elevated signature";
-    return "Clean signature";
+    if (event.ammoniaPeak >= 80) {
+      return {
+        label: "Warning: strong ammonia",
+        className: "event-warning",
+        insight: "Warning signature captured from the latest visit.",
+        action: "MQ137 reached the red zone. Check the litter box now and consider contacting a veterinarian if this pattern repeats."
+      };
+    }
+
+    if (event.ammoniaPeak >= 30) {
+      return {
+        label: "Attention: ammonia elevated",
+        className: "event-caution",
+        insight: "Attention signature captured from the latest visit.",
+        action: "MQ137 reached the orange zone. Clean or inspect the litter box and watch the next visit."
+      };
+    }
+
+    return {
+      label: "Normal signature",
+      className: "event-normal",
+      insight: "Normal signature captured from the latest visit.",
+      action: ""
+    };
   }
 
   function finishVisit() {
@@ -414,6 +574,13 @@ const char DASHBOARD_HTML[] = R"rawliteral(
     const tempDelta = end.temp - activeVisit.tempStart;
     const humDelta = end.hum - activeVisit.humStart;
 
+    if (activeVisit.id === null) {
+      activeVisit = null;
+      document.getElementById("visitLiveState").innerText = "Standby";
+      renderVisitEvents();
+      return;
+    }
+
     const event = {
       id: activeVisit.id,
       when: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
@@ -427,7 +594,11 @@ const char DASHBOARD_HTML[] = R"rawliteral(
       samples: activeVisit.samples.slice()
     };
 
-    event.grade = gradeVisit(event);
+    const grade = gradeVisit(event);
+    event.grade = grade.label;
+    event.gradeClass = grade.className;
+    event.insight = grade.insight;
+    event.action = grade.action;
     visitEvents.unshift(event);
     visitEvents = visitEvents.slice(0, 3);
     activeVisit = null;
@@ -479,17 +650,19 @@ const char DASHBOARD_HTML[] = R"rawliteral(
     }
 
     document.getElementById("visitInsight").innerText =
-      visitEvents[0].grade + " captured from the latest visit.";
+      visitEvents[0].insight || (visitEvents[0].grade + " captured from the latest visit.");
 
     container.innerHTML = visitEvents.map(function(event, index) {
       const revealClass = event.id === revealEventId ? "reveal" : "";
+      const eventClass = event.gradeClass || "event-normal";
       return `
-        <div class="event-card ${revealClass}">
+        <div class="event-card ${eventClass} ${revealClass}">
           <div class="event-head">
             <div class="event-name">Visit #${event.id}</div>
             <div class="event-time">${event.when}</div>
           </div>
           <div class="event-score">${event.grade}</div>
+          <div class="event-action">${event.action || ""}</div>
           <div class="event-grid">
             <div>Duration<b>${event.durationSec}s</b></div>
             <div>Recovery<b>${event.recoverySec}s</b></div>
@@ -543,7 +716,14 @@ async function updateData() {
     document.getElementById("airLevel").innerText =
       ammoniaText(Number(data.air_change_percent));
 
+    const ammoniaSignal = Math.max(0, Number(data.ammonia_change_percent));
+    const sulfideSignal = Math.max(0, Number(data.air_change_percent));
+
     updateCameraAiBox(data);
+    updateMQ137Summary(ammoniaSignal);
+    updateMQ135Summary(sulfideSignal);
+    updateSuggestedNextSteps(ammoniaSignal, sulfideSignal);
+    updateHowToRead(data);
 
     // Ammonia status
     if (Number(data.ammonia_change_percent) < 30) {
@@ -625,6 +805,10 @@ async function updateData() {
       ) {
         window.entryCount += 1;
         window.entryCountedThisVisit = true;
+
+        if (activeVisit && activeVisit.id === null) {
+          activeVisit.id = window.entryCount;
+        }
       }
 
       document.getElementById("entryFreq").innerText =
@@ -674,17 +858,6 @@ async function updateData() {
     lastPostRecording = postRecordingNow;
 
     // Summary
-    if (Number(data.ammonia_change_percent) >= 30) {
-
-      document.getElementById("summaryText").innerText =
-        "Ammonia signal is higher than baseline. Check litter box condition and keep monitoring recent behavior.";
-
-    } else {
-
-      document.getElementById("summaryText").innerText =
-        "Recent ammonia, entry frequency, and stay duration are still within normal range.";
-    }
-
     // 图表
     ammoniaHistory.push(
       Math.max(0, Number(data.ammonia_change_percent))
