@@ -1,8 +1,11 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include "esp_wifi.h"
+#include "esp_wpa2.h"
 #include "esp_camera.h"
 #include "esp_http_server.h"
 #include "img_converters.h"
+#include <lwip/dns.h>
 
 #include "config.h"
 #include "sensors.h"
@@ -12,7 +15,9 @@
 #include "storage.h"
 
 const char* ssid = "eduroam";
-const char* password = "***REMOVED***";
+const char* password = "";
+const char* enterpriseUsername = "";
+const char* enterprisePassword = "***REMOVED***";
 
 bool cameraBaselineReady = false;
 bool currentCameraPresent = false;
@@ -541,6 +546,7 @@ void startCameraServer() {
 
 void connectWiFi() {
   WiFi.mode(WIFI_AP_STA);
+  WiFi.setSleep(false);
 
   if (WiFi.softAP(DEMO_AP_SSID, DEMO_AP_PASSWORD)) {
     Serial.print("Demo WiFi ready: ");
@@ -552,14 +558,31 @@ void connectWiFi() {
     Serial.println("Demo WiFi failed to start.");
   }
 
-  WiFi.begin(ssid, password);
+  bool useEnterpriseWiFi = strlen(password) < 2;
+
+  if (useEnterpriseWiFi) {
+    if (strlen(enterpriseUsername) == 0) {
+      Serial.println("WPA Enterprise username is empty. Fill enterpriseUsername before using eduroam.");
+      Serial.println("Demo WiFi dashboard is still available.");
+      return;
+    }
+
+    Serial.println("Connecting WPA Enterprise WiFi...");
+    esp_wifi_sta_wpa2_ent_set_identity((uint8_t*)enterpriseUsername, strlen(enterpriseUsername));
+    esp_wifi_sta_wpa2_ent_set_username((uint8_t*)enterpriseUsername, strlen(enterpriseUsername));
+    esp_wifi_sta_wpa2_ent_set_password((uint8_t*)enterprisePassword, strlen(enterprisePassword));
+    esp_wifi_sta_wpa2_ent_enable();
+    WiFi.begin(ssid);
+  } else {
+    Serial.println("Connecting regular WiFi...");
+    WiFi.begin(ssid, password);
+  }
 
   Serial.print("Connecting WiFi");
 
   unsigned long startTime = millis();
-  const unsigned long wifiTimeoutMs = 15000;
 
-  while (WiFi.status() != WL_CONNECTED && millis() - startTime < wifiTimeoutMs) {
+  while (WiFi.status() != WL_CONNECTED && millis() - startTime < WIFI_CONNECT_TIMEOUT_MS) {
     delay(500);
     Serial.print(".");
   }
@@ -574,6 +597,10 @@ void connectWiFi() {
   Serial.print("WiFi connected. Open dashboard: http://");
   Serial.print(WiFi.localIP());
   Serial.println(":8000");
+
+  ip_addr_t dnsserver;
+  IP_ADDR4(&dnsserver, 8, 8, 8, 8);
+  dns_setserver(0, &dnsserver);
 
   syncClockFromNTP();
 

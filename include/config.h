@@ -5,9 +5,12 @@
 
 extern const char* ssid;
 extern const char* password;
+extern const char* enterpriseUsername;
+extern const char* enterprisePassword;
 
 const char* const DEMO_AP_SSID = "SniffKitty-Demo";
 const char* const DEMO_AP_PASSWORD = "12345678";
+const unsigned long WIFI_CONNECT_TIMEOUT_MS = 25000;
 
 const int MQ137_PIN = 1;
 const int MQ135_PIN = 2;
