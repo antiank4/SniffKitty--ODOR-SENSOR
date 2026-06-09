@@ -8,16 +8,35 @@
 #include <lwip/dns.h>
 
 #include "config.h"
+#if __has_include("wifi_credentials.h")
+#include "wifi_credentials.h"
+#endif
 #include "sensors.h"
 #include "dashboard_html.h"
 #include "camera_server.h"
 #include "status_led.h"
 #include "storage.h"
 
-const char* ssid = "eduroam";
-const char* password = "";
-const char* enterpriseUsername = "";
-const char* enterprisePassword = "***REMOVED***";
+#ifndef WIFI_SSID
+#define WIFI_SSID "eduroam"
+#endif
+
+#ifndef WIFI_PASSWORD
+#define WIFI_PASSWORD ""
+#endif
+
+#ifndef WIFI_ENTERPRISE_USERNAME
+#define WIFI_ENTERPRISE_USERNAME ""
+#endif
+
+#ifndef WIFI_ENTERPRISE_PASSWORD
+#define WIFI_ENTERPRISE_PASSWORD ""
+#endif
+
+const char* ssid = WIFI_SSID;
+const char* password = WIFI_PASSWORD;
+const char* enterpriseUsername = WIFI_ENTERPRISE_USERNAME;
+const char* enterprisePassword = WIFI_ENTERPRISE_PASSWORD;
 
 bool cameraBaselineReady = false;
 bool currentCameraPresent = false;
